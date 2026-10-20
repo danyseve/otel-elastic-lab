@@ -1,0 +1,196 @@
+# Values for open-telemetry/opentelemetry-kube-stack.
+# Collector names are "<release>-<suffix>"; the operator exposes each one as the
+# Service "<name>-collector" (e.g. otel-gateway-collector).
+clusterName: otel-lab
+
+crds:
+  installOtel: true
+  installPrometheus: false
+
+opentelemetry-operator:
+  enabled: true
+  admissionWebhooks:
+    certManager:
+      enabled: true
+
+collectors:
+  # Agent tier: one per node. Container logs, kubelet and host metrics.
+  daemon:
+    suffix: daemon
+    enabled: true
+    mode: daemonset
+    presets:
+      logsCollection:
+        enabled: true
+      kubeletMetrics:
+        enabled: true
+      hostMetrics:
+        enabled: true
+      kubernetesAttributes:
+        enabled: true
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+    config:
+      receivers:
+        otlp:
+          protocols:
+            grpc: { endpoint: 0.0.0.0:4317 }
+            http: { endpoint: 0.0.0.0:4318 }
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_percentage: 80
+          spike_limit_percentage: 25
+        resource:
+          attributes:
+            - { key: deployment.environment.name, value: lab, action: insert }
+        batch: {}
+      exporters:
+        otlp/gateway:
+          endpoint: otel-gateway-collector.observability.svc:4317
+          tls: { insecure: true }
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [otlp/gateway]
+          metrics:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [otlp/gateway]
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, resource, batch]
+            exporters: [otlp/gateway]
+
+  # Cluster-level signals: object state and Kubernetes events (single replica).
+  cluster:
+    suffix: cluster-stats
+    enabled: true
+    mode: deployment
+    replicas: 1
+    presets:
+      clusterMetrics:
+        enabled: true
+      kubernetesEvents:
+        enabled: true
+    config:
+      processors:
+        batch: {}
+      exporters:
+        otlp/gateway:
+          endpoint: otel-gateway-collector.observability.svc:4317
+          tls: { insecure: true }
+      service:
+        pipelines:
+          metrics:
+            processors: [batch]
+            exporters: [otlp/gateway]
+          logs:
+            processors: [batch]
+            exporters: [otlp/gateway]
+
+  # Gateway tier: EDOT Collector, the only component holding ES credentials.
+  gateway:
+    suffix: gateway
+    enabled: true
+    mode: deployment
+    replicas: 2
+    image:
+      repository: docker.elastic.co/elastic-agent/elastic-otel-collector
+      tag: "{{ .Values.elastic.version }}"
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { memory: 1Gi }
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: otel-gateway-collector
+    env:
+      - name: ES_USERNAME
+        valueFrom:
+          secretKeyRef: { name: otel-writer-user, key: username }
+      - name: ES_PASSWORD
+        valueFrom:
+          secretKeyRef: { name: otel-writer-user, key: password }
+    volumes:
+      - name: es-ca
+        secret:
+          secretName: lab-es-http-certs-public
+      - name: gateway-tls
+        secret:
+          secretName: otel-gateway-tls
+    volumeMounts:
+      - { name: es-ca, mountPath: /etc/elastic/es-ca, readOnly: true }
+      - { name: gateway-tls, mountPath: /etc/otel/tls, readOnly: true }
+    config:
+      receivers:
+        # In-cluster traffic (daemon, cluster-stats).
+        otlp:
+          protocols:
+            grpc: { endpoint: 0.0.0.0:4317 }
+            http: { endpoint: 0.0.0.0:4318 }
+        # External agents through the MetalLB Service (TLS, lab CA).
+        otlp/tls:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4417
+              tls: { cert_file: /etc/otel/tls/tls.crt, key_file: /etc/otel/tls/tls.key }
+            http:
+              endpoint: 0.0.0.0:4418
+              tls: { cert_file: /etc/otel/tls/tls.crt, key_file: /etc/otel/tls/tls.key }
+      connectors:
+        # Aggregated APM metrics (latency, throughput, errors) for Kibana APM.
+        elasticapm: {}
+      processors:
+        memory_limiter:
+          check_interval: 1s
+          limit_percentage: 75
+          spike_limit_percentage: 20
+        batch:
+          send_batch_size: 1000
+          send_batch_max_size: 1500
+          timeout: 1s
+        batch/aggregated:
+          send_batch_max_size: 0
+          timeout: 1s
+        elasticapm: {}
+      exporters:
+        elasticsearch/otel:
+          endpoints: [https://lab-es-http.observability.svc:9200]
+          user: ${env:ES_USERNAME}
+          password: ${env:ES_PASSWORD}
+          tls:
+            ca_file: /etc/elastic/es-ca/ca.crt
+          mapping:
+            mode: otel
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp, otlp/tls]
+            processors: [memory_limiter, batch, elasticapm]
+            exporters: [elasticapm, elasticsearch/otel]
+          metrics:
+            receivers: [otlp, otlp/tls]
+            processors: [memory_limiter, batch]
+            exporters: [elasticsearch/otel]
+          logs:
+            receivers: [otlp, otlp/tls]
+            processors: [memory_limiter, batch, elasticapm]
+            exporters: [elasticapm, elasticsearch/otel]
+          metrics/aggregated:
+            receivers: [elasticapm]
+            processors: [batch/aggregated]
+            exporters: [elasticsearch/otel]
+
+# The applications run outside the cluster (agent on their host). Enable this
+# to auto-instrument in-cluster workloads with a pod annotation.
+instrumentation:
+  enabled: false

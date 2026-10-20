@@ -1,7 +1,0 @@
-otel_agent_journald_units:
-  - ssh.service
-  - elasticsearch.service
-  - kibana.service
-  - edot-gateway.service
-  - keepalived.service
-  - otelcol-contrib.service

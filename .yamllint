@@ -1,7 +1,8 @@
 extends: default
 ignore: |
   terraform/.terraform/
-  ansible/.pki/
+  ansible/.kube/
+  k8s/charts/*/templates/
 rules:
   line-length: disable
   document-start: disable

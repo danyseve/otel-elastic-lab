@@ -6,20 +6,21 @@ summaries are published.
 
 | ID | Script | Question |
 |---|---|---|
-| E1 | `chaos/es-node-failure.sh` | How long until the cluster is writable and green again after losing a node? |
-| E2 | `chaos/gateway-failover.sh` | How long does OTLP ingestion stay down when the active gateway dies? |
+| E1 | `chaos/es-node-failure.sh` | When a whole k3s node (VM) dies, how long until ECK reports the cluster degraded, and how long until it is green again? |
+| E2 | `chaos/gateway-failover.sh` | When a gateway pod dies, is OTLP ingestion through the MetalLB IP interrupted at all? |
 | E3 | `k6/load.js` | What is the latency and resource cost under sustained load, with and without instrumentation? |
-| E4 | E2 + Kibana | Is telemetry lost during a gateway outage? (Count spans generated vs. stored.) |
+| E4 | E1/E2 + Kibana | Is telemetry lost during a failure? (Count spans generated vs. stored.) |
 
 ## Requirements
 
-`bash`, `curl`, `jq`, `bc`, `k6`, SSH access to the VMs/hypervisors, and the lab CA at `ansible/.pki/ca.crt`.
+`bash`, `kubectl`, `curl`, `bc`, `k6`, SSH access to the hypervisor hosts (E1), the kubeconfig
+written by Ansible (`ansible/.kube/config`) and the lab CA:
 
 ```bash
-export ELASTIC_PASSWORD=...        # never commit it
-export ES_URL=https://es-01.lab.example:9200
+export KUBECONFIG=ansible/.kube/config
+kubectl -n cert-manager get secret lab-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/lab-ca.crt
 
-./chaos/es-node-failure.sh <hypervisor-host> <vmid-of-es-02>
-./chaos/gateway-failover.sh
+./chaos/es-node-failure.sh <hypervisor-host> <vmid-of-k8s-02>
+GATEWAY_IP=10.0.0.40 CA_CERT=/tmp/lab-ca.crt ./chaos/gateway-failover.sh
 BASE_URL=http://apps-01.lab.example:8080 k6 run k6/load.js
 ```

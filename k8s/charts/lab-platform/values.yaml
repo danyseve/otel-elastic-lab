@@ -1,0 +1,22 @@
+# Defaults; real values come from k8s/values/lab.yaml.
+domain: lab.example
+
+metallb:
+  addresses: []
+
+ips:
+  otelGateway: ""
+  kibana: ""
+
+elastic:
+  version: "9.2.0"
+  esCount: 3
+  esMemory: 8Gi
+  esCpu: "2"
+  esStorage: 80Gi
+  storageClass: local-path
+  kibanaMemory: 2Gi
+
+# Pods behind the external OTLP Service (created by the OTel Operator).
+otelGateway:
+  collectorName: otel-gateway-collector

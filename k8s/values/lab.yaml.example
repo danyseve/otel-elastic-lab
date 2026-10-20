@@ -1,0 +1,19 @@
+# Copy to values/lab.yaml (git-ignored) and adapt. All values below are examples.
+domain: lab.example
+
+metallb:
+  addresses:
+    - 10.0.0.40-10.0.0.49
+
+ips:
+  otelGateway: 10.0.0.40 # must match otel_gateway_lb_ip in Ansible
+  kibana: 10.0.0.41
+
+elastic:
+  version: "9.2.0"
+  esCount: 3
+  esMemory: 8Gi # heap is auto-sized to 50% of this
+  esCpu: "2"
+  esStorage: 80Gi
+  storageClass: local-path
+  kibanaMemory: 2Gi

@@ -1,0 +1,30 @@
+# Least-privilege user for the OTel gateway: write OTel data streams, read cluster stats.
+# The password is generated on first install and kept on upgrades; it never lives in git.
+{{- $existing := lookup "v1" "Secret" .Release.Namespace "otel-writer-user" }}
+{{- $password := randAlphaNum 32 }}
+{{- if $existing }}
+{{- $password = index $existing.data "password" | b64dec }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: otel-writer-role
+  namespace: {{ .Release.Namespace }}
+stringData:
+  roles.yml: |-
+    otel_writer:
+      cluster: ["monitor"]
+      indices:
+        - names: ["logs-*", "metrics-*", "traces-*"]
+          privileges: ["auto_configure", "create_doc"]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: otel-writer-user
+  namespace: {{ .Release.Namespace }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: otel_writer
+  password: {{ $password | quote }}
+  roles: otel_writer

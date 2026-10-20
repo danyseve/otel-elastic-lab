@@ -1,3 +1,21 @@
+# The lab CA is issued by cert-manager inside the cluster; read it from there.
+- name: Read the lab CA from the cluster
+  ansible.builtin.command:
+    argv: [k3s, kubectl, -n, cert-manager, get, secret, lab-ca, -o, 'jsonpath={.data.ca\.crt}']
+  register: otel_agent_lab_ca
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+
+- name: Trust the lab CA (it signs the gateway certificate)
+  ansible.builtin.copy:
+    content: "{{ otel_agent_lab_ca.stdout | b64decode }}"
+    dest: "{{ otel_agent_ca_path }}"
+    mode: "0644"
+  notify:
+    - Update CA certificates
+    - Restart otelcol-contrib
+
 - name: Download otelcol-contrib {{ otelcol_version }}
   ansible.builtin.get_url:
     url: "{{ otel_agent_deb_url }}"
@@ -9,10 +27,10 @@
     deb: "/var/cache/apt/archives/otelcol-contrib_{{ otelcol_version }}_amd64.deb"
   notify: Restart otelcol-contrib
 
-- name: Let the agent read journald and service logs
+- name: Let the agent read journald
   ansible.builtin.user:
     name: otelcol-contrib
-    groups: "{{ ['adm', 'systemd-journal'] + (['elasticsearch'] if otel_agent_collect_es else []) }}"
+    groups: [adm, systemd-journal]
     append: true
   notify: Restart otelcol-contrib
 
@@ -34,14 +52,13 @@
     validate: /usr/bin/otelcol-contrib validate --config=%s
   notify: Restart otelcol-contrib
 
-- name: Agent environment (credentials for the Elasticsearch receiver)
+- name: Agent service options
   ansible.builtin.template:
     src: otelcol-contrib.conf.j2
     dest: /etc/otelcol-contrib/otelcol-contrib.conf
     owner: root
     group: root
-    mode: "0600"
-  no_log: true
+    mode: "0644"
   notify: Restart otelcol-contrib
 
 - name: Enable and start the agent

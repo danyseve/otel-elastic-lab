@@ -10,10 +10,9 @@ domain          = "lab.example"
 
 ssh_public_key = "ssh-ed25519 AAAA... you@workstation"
 
-# One Elasticsearch VM per hypervisor host.
+# Three k3s nodes, one per hypervisor host.
 vms = {
-  es-01 = { node = "node-1", vm_id = 901, role = "elasticsearch", ip = "10.0.0.11", cores = 4, memory_mb = 8192, disk_gb = 100 }
-  es-02 = { node = "node-2", vm_id = 902, role = "elasticsearch", ip = "10.0.0.12", cores = 4, memory_mb = 8192, disk_gb = 100 }
-  es-03 = { node = "node-3", vm_id = 903, role = "elasticsearch", ip = "10.0.0.13", cores = 4, memory_mb = 8192, disk_gb = 100 }
-  apps-01 = { node = "node-1", vm_id = 910, role = "apps", ip = "10.0.0.20", cores = 2, memory_mb = 4096, disk_gb = 40 }
+  k8s-01 = { node = "node-1", vm_id = 901, ip = "10.0.0.11", cores = 6, memory_mb = 16384, disk_gb = 150 }
+  k8s-02 = { node = "node-2", vm_id = 902, ip = "10.0.0.12", cores = 6, memory_mb = 16384, disk_gb = 150 }
+  k8s-03 = { node = "node-3", vm_id = 903, ip = "10.0.0.13", cores = 6, memory_mb = 16384, disk_gb = 150 }
 }

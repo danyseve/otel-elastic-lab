@@ -3,21 +3,22 @@
 [![CI](https://github.com/danyseve/otel-elastic-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/danyseve/otel-elastic-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-blueviolet)
-![Elastic](https://img.shields.io/badge/Elastic-9.x-005571)
+![Elastic](https://img.shields.io/badge/Elastic-9.x%20·%20ECK%20Basic-005571)
+![Kubernetes](https://img.shields.io/badge/k3s-HA-FFC61C)
 
-**Vendor-neutral, full-stack observability (traces, metrics, logs) built on OpenTelemetry, with a
-highly available 3-node Elasticsearch cluster on KVM virtual machines. Everything is defined as code,
-can be rebuilt from scratch, and ships with scripted failure experiments.**
+**Vendor-neutral, full-stack observability (traces, metrics, logs) built on OpenTelemetry and
+Elastic Cloud on Kubernetes (ECK), running on-prem on a highly available 3-node k3s cluster, using
+only the free Basic license. Everything is defined as code and ships with scripted failure experiments.**
 
-> 🚧 **Status:** work in progress. The code passes CI (lint/validate) but has not yet been deployed
+The lab monitors two real applications, **Ascenda** and a **BJJ (Brazilian Jiu-Jitsu) app**, which
+run outside the cluster, as well as the cluster and the observability platform itself.
+
+> 🚧 **Status:** work in progress. The code passes CI (lint/validate/render) but has not yet been deployed
 > end to end; experiment results will be published in the paper as they are run.
+> The previous VM-based design (Elastic installed from packages) is kept as tag
+> [`v0.1.0`](https://github.com/danyseve/otel-elastic-lab/tree/v0.1.0).
 
-The lab monitors two real applications, **Ascenda** and a **BJJ (Brazilian Jiu-Jitsu) app**, as
-well as the observability platform itself.
-
-> 📄 **Technical paper:** [`docs/paper.md`](docs/paper.md) covers the design, the implementation and the
-> experiment methodology (in Spanish).
-> 🧭 **Architecture decisions:** [`docs/adr/`](docs/adr/)
+> 📄 **Technical paper:** [`docs/paper.md`](docs/paper.md) (in Spanish) · 🧭 **Decisions:** [`docs/adr/`](docs/adr/)
 
 ---
 
@@ -25,129 +26,114 @@ well as the observability platform itself.
 
 ```mermaid
 flowchart LR
-  subgraph APPS [VM apps]
+  subgraph APPS [App hosts - outside the cluster]
     A1[Ascenda<br/>OTel SDK] --> AG
     A2[BJJ app<br/>OTel SDK] --> AG
-    AG[OTel Collector<br/>agent]
+    AG[otelcol agent<br/>disk queue]
   end
 
-  VIP{{VIP otel-gw<br/>VRRP}}
+  subgraph K8S [k3s cluster - 3 KVM nodes]
+    LB{{MetalLB IP<br/>otel-gw · TLS}}
+    subgraph OTEL [OpenTelemetry Operator]
+      DS[Agent DaemonSet<br/>logs · kubelet · host]
+      CS[Cluster stats<br/>k8s objects · events]
+      GW[EDOT gateway<br/>Deployment x2]
+    end
+    subgraph ECK [ECK operator - Basic license]
+      ES[(Elasticsearch<br/>3 nodes)]
+      KB[Kibana]
+    end
+    DS --> GW
+    CS --> GW
+    LB --> GW
+    GW --> ES
+    KB --> ES
+  end
 
-  subgraph N1 [VM node 1]
-    GW1[EDOT gateway] --> ES1[(Elasticsearch)]
-    K[Kibana]
-    AG1[agent] --> GW1
-  end
-  subgraph N2 [VM node 2]
-    GW2[EDOT gateway] --> ES2[(Elasticsearch)]
-    AG2[agent] --> GW2
-  end
-  subgraph N3 [VM node 3]
-    GW3[EDOT gateway] --> ES3[(Elasticsearch)]
-    AG3[agent] --> GW3
-  end
-
-  AG -- "OTLP/gRPC + TLS" --> VIP
-  VIP --> GW1
-  VIP -.failover.-> GW2
-  VIP -.failover.-> GW3
-  ES1 <--> ES2 <--> ES3
-  K --> ES1
+  AG -- "OTLP/gRPC + TLS" --> LB
 ```
 
-Each Elasticsearch VM is meant to run on a **different physical hypervisor host**, so losing one
-host never breaks quorum. The reference implementation targets Proxmox VE (Terraform `bpg/proxmox`),
-but the Ansible layer works on any Debian 13 VM, on-prem or in the cloud.
+Each k3s node is a VM on a **different physical hypervisor host**. Losing one host keeps both the
+etcd quorum and the Elasticsearch quorum (2 of 3).
 
 | Layer | Component | Notes |
 |---|---|---|
-| Compute | 3 × ES VMs + 1 × apps VM (KVM) | `cpu=host`, virtio-scsi-single, ballooning disabled |
-| OS | Debian 13 (cloud image + cloud-init) | Provisioned by Terraform |
-| Storage / search | Elasticsearch 9.x, 3 master-eligible data nodes | Mutual TLS from a lab PKI managed by Ansible |
-| UI | Kibana 9.x | APM / Observability, dashboards, SLOs |
-| Telemetry pipeline | OTel Collector **agent** (contrib) on every VM → **EDOT gateway** on every ES node | Agents queue to disk; gateways sit behind a keepalived VIP |
-| Instrumentation | OpenTelemetry SDKs and auto-instrumentation | No proprietary agents |
+| Compute | 3 × KVM VMs (16 GB each), Debian 13 + cloud-init | Terraform (`bpg/proxmox` reference implementation) |
+| Kubernetes | k3s, 3 servers with embedded etcd | Installed by Ansible; MetalLB replaces the bundled LB |
+| Search & UI | **ECK** → Elasticsearch 9.x (3 nodes) + Kibana | Free **Basic** license; TLS and users managed by the operator |
+| Telemetry | **OpenTelemetry Operator** (`opentelemetry-kube-stack`) | Agent DaemonSet, cluster collector, EDOT gateway ×2 |
+| Certificates | cert-manager with a lab CA | Kibana and OTLP gateway TLS |
+| Apps | Outside the cluster, OTel SDKs → local `otelcol` agent | Persistent queue, TLS to the gateway |
 
 ## What this lab demonstrates
 
-- **OpenTelemetry end to end.** SDKs → agent → gateway → Elasticsearch with OTel-native mapping. No vendor agents.
-- **Agent/gateway collector pattern.** The agent on each VM collects host metrics, journald and file logs, and Elasticsearch metrics. The gateway layer handles enrichment and APM aggregation (`elasticapm` connector).
-- **HA with no single point of failure.** A 3-node ES quorum, 3 gateways behind a VRRP VIP, and persistent agent queues (`file_storage`).
-- **The monitoring stack monitors itself.** Collector internal metrics, ES cluster metrics and the service logs all go into the same backend.
-- **Infrastructure as code.** Terraform creates the VMs and writes the Ansible inventory, and Ansible configures everything else, including the PKI.
-- **Chaos experiments.** Scripted failures (an ES node going down, the gateway failing over) with measured recovery times.
-- **CI.** `terraform validate`, `ansible-lint`, `yamllint`, `shellcheck` and `gitleaks` run on every push.
+- **OpenTelemetry end to end.** SDKs → agents → gateway → Elasticsearch with OTel-native mapping. No vendor agents.
+- **Operators over scripts.** ECK runs Elasticsearch and Kibana, and the OTel Operator runs the collectors. Everything is declarative.
+- **HA with no single point of failure.** 3-node etcd and ES quorums, active/active gateways, and agents that buffer to disk.
+- **The monitoring stack monitors itself.** Kubernetes, node, collector and Elasticsearch signals all go into the same backend.
+- **100 % free tier.** Every feature is in the Basic license, and the paid gaps (SLOs, service maps, notification connectors) are documented with free alternatives ([ADR-0005](docs/adr/0005-basic-license-only.md)).
+- **Infrastructure as code.** Terraform → Ansible (k3s) → Helmfile (platform), with no clicking.
+- **Chaos experiments.** Scripted failures (a node VM down, a gateway pod killed) with measured recovery.
+- **CI.** `terraform validate`, `ansible-lint` (production profile), `yamllint`, `shellcheck`, `helm lint` + `kubeconform` and `gitleaks` run on every push.
 
 ## Quickstart
 
 ### Prerequisites
 
-- Three hypervisor hosts (reference: a Proxmox VE cluster with an API token and `snippets` enabled on a storage)
-- Terraform ≥ 1.6, Ansible ≥ 2.16 (`ansible-core`), and an SSH key
-- About 8 GB RAM and 4 vCPU free on each host
-
-### 1. Infrastructure (Terraform)
+- Three hypervisor hosts (reference: Proxmox VE with an API token and `snippets` enabled on a storage)
+- Terraform ≥ 1.6, Ansible ≥ 2.16, Helm ≥ 3.14, Helmfile ≥ 0.165, kubectl
+- About 16 GB RAM and 6 vCPU free on each host
 
 ```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars   # your endpoint, token, IPs, SSH key (git-ignored)
-terraform init
-terraform apply                                 # creates 4 VMs + ansible/inventory/hosts.yml
+# 1. VMs (writes ansible/inventory/k3s.yml)
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars   # edit
+make infra
+
+# 2. k3s cluster (writes ansible/.kube/config)
+make deps
+cp ansible/group_vars/all/vault.yml.example ansible/group_vars/all/vault.yml
+ansible-vault encrypt ansible/group_vars/all/vault.yml
+make cluster
+
+# 3. Platform: cert-manager, MetalLB, ECK, Elasticsearch, Kibana, OTel
+cp k8s/values/lab.yaml.example k8s/values/lab.yaml                 # edit IPs
+make platform
+make status
+
+# 4. Agents on the app hosts outside the cluster
+cp ansible/inventory.example/apps.yml ansible/inventory/apps.yml   # edit
+make agents
 ```
 
-> Not using Proxmox? Create four Debian 13 VMs any way you like and copy
-> `ansible/inventory/hosts.yml.example` to `hosts.yml`.
-
-### 2. Configuration (Ansible)
-
-```bash
-cd ansible
-ansible-galaxy collection install -r requirements.yml
-cp group_vars/all/vault.yml.example group_vars/all/vault.yml
-ansible-vault encrypt group_vars/all/vault.yml  # set strong passwords first
-ansible-playbook site.yml --ask-vault-pass
-```
-
-### 3. Open Kibana
-
-`https://es-01.<your-domain>:5601`. Log in as `elastic` and go to **Observability → Applications**.
-Import the lab CA (`ansible/.pki/ca.crt`) into your browser if you want a green padlock.
-
-Run `make help` to see every shortcut.
+Kibana: `https://kibana.<your-domain>:5601`, user `elastic`, password from `make elastic-password`.
 
 ## Repository layout
 
 ```
-├── terraform/            # VMs (cloud-init) + generated Ansible inventory
-├── ansible/
-│   ├── site.yml          # full deployment
-│   └── roles/            # pki, common, elasticsearch, kibana, otel_gateway,
-│                         # keepalived, otel_agent, app_instrumentation
-├── apps/                 # how to instrument Ascenda / BJJ app (per language)
-├── experiments/          # k6 load tests + chaos scripts
-├── kibana/               # exported dashboards / SLO definitions
-└── docs/
-    ├── paper.md          # technical paper
-    └── adr/              # architecture decision records
+├── terraform/                 # 3 KVM VMs (cloud-init) + generated Ansible inventory
+├── ansible/                   # OS baseline, k3s HA, OTel agent on the app hosts
+├── k8s/
+│   ├── helmfile.yaml.gotmpl   # cert-manager, MetalLB, ECK, lab-platform, OTel kube-stack
+│   ├── charts/lab-platform/   # CA, IP pool, Elasticsearch, Kibana, collector credentials
+│   └── values/                # lab values (example) + OTel collectors configuration
+├── apps/                      # how to instrument Ascenda / BJJ app (per language)
+├── experiments/               # k6 load test + chaos scripts
+├── kibana/                    # dashboards, rules, free-tier alternatives
+└── docs/                      # paper + architecture decision records
 ```
 
 ## Roadmap
 
-- [x] Terraform: VMs from Debian 13 cloud image
-- [x] Ansible: 3-node Elasticsearch with TLS, Kibana
-- [x] OTel agent + EDOT gateway, keepalived VIP, persistent queues
-- [x] Chaos and load experiment scripts
-- [ ] Instrument Ascenda and the BJJ app (traces, metrics, logs)
-- [ ] Dashboards, SLOs and alerts as code (`elastic/elasticstack` Terraform provider)
-- [ ] Polyglot demo app so anyone can reproduce the lab without the private apps
-- [ ] Tail-based sampling (`loadbalancing` exporter + `tail_sampling` processor)
-- [ ] Publish experiment results in the paper
-- [ ] English translation of the paper
-
-## Screenshots
-
-_Coming soon: service map, trace waterfall, host metrics and the chaos experiment timeline._
+- [x] VM-based design with Elastic from packages (tag `v0.1.0`)
+- [x] ECK on k3s, OTel Operator, MetalLB, cert-manager (Basic license)
+- [ ] First end-to-end deployment in the lab
+- [ ] Instrument Ascenda and the BJJ app
+- [ ] Dashboards and alert rules as code; ElastAlert2 for notifications
+- [ ] Snapshots to S3-compatible storage (SLM)
+- [ ] Polyglot demo app inside the cluster (OTel Operator auto-instrumentation)
+- [ ] GitOps (Argo CD) for the platform layer
+- [ ] Publish experiment results in the paper, plus an English translation
 
 ## License
 
-[MIT](LICENSE) © danyseve
+[MIT](LICENSE) © danyseve. Elastic components are used under the Elastic License 2.0 (Basic tier).

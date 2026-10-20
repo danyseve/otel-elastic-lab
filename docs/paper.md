@@ -1,41 +1,44 @@
-# Observabilidad *vendor-neutral* con OpenTelemetry y Elasticsearch en alta disponibilidad sobre máquinas virtuales KVM
+# Observabilidad *vendor-neutral* con OpenTelemetry y Elastic Cloud on Kubernetes en alta disponibilidad, on-premise y con licencia gratuita
 
-**Autor:** danyseve · **Versión:** 0.1 (borrador) · **Repositorio:** `github.com/danyseve/otel-elastic-lab`
+**Autor:** danyseve · **Versión:** 0.2 (borrador) · **Repositorio:** `github.com/danyseve/otel-elastic-lab`
 
 ---
 
 ## Resumen
 
 Este trabajo describe el diseño, la implementación y la validación experimental de una plataforma de
-observabilidad completa (trazas, métricas y logs) construida exclusivamente con estándares abiertos.
-Las aplicaciones y la infraestructura se instrumentan con **OpenTelemetry**. La telemetría pasa por
-una arquitectura de colectores en dos niveles (*agent* y *gateway*) y se almacena en un clúster de
-**Elasticsearch** de tres nodos desplegado sobre máquinas virtuales KVM, cada una en un host físico
-distinto. Toda la plataforma se define como código (Terraform y Ansible) y se valida mediante
-experimentos de fallo controlado. El caso de estudio son dos aplicaciones reales: **Ascenda** y una
-aplicación de gestión para una academia de **Brazilian Jiu-Jitsu**.
+observabilidad completa (trazas, métricas y logs) construida con estándares abiertos y desplegada
+on-premise. La telemetría se genera y transporta con **OpenTelemetry**, mediante colectores
+gestionados por el *OpenTelemetry Operator*, y se almacena en **Elasticsearch** desplegado con
+**Elastic Cloud on Kubernetes (ECK)** sobre un clúster **k3s** de tres nodos en alta disponibilidad.
+Cada nodo es una máquina virtual KVM en un host físico distinto. Toda la plataforma utiliza
+exclusivamente la **licencia gratuita (Basic)** de Elastic, se define como código (Terraform,
+Ansible y Helmfile) y se valida mediante experimentos de fallo controlado. El caso de estudio son
+dos aplicaciones reales que se ejecutan fuera del clúster: **Ascenda** y una aplicación de gestión
+para una academia de **Brazilian Jiu-Jitsu**.
 
-**Palabras clave:** OpenTelemetry, observabilidad, Elasticsearch, APM, alta disponibilidad,
-infraestructura como código, ingeniería del caos.
+**Palabras clave:** OpenTelemetry, observabilidad, Elasticsearch, ECK, Kubernetes, k3s, APM, alta
+disponibilidad, infraestructura como código, ingeniería del caos.
 
 ---
 
 ## 1. Introducción
 
-La observabilidad moderna se apoya en tres señales: **trazas** (el recorrido de una petición),
-**métricas** (agregados numéricos en el tiempo) y **logs** (eventos discretos). Durante años, cada
-fabricante de APM impuso su propio agente y su propio protocolo, de modo que cambiar de backend
-obligaba a reinstrumentar las aplicaciones.
+La observabilidad moderna se apoya en tres señales: **trazas**, **métricas** y **logs**. Durante
+años, cada fabricante de APM impuso su propio agente y su propio protocolo. **OpenTelemetry (OTel)**,
+proyecto de la CNCF, resuelve ese acoplamiento con una especificación, unos SDK y un protocolo
+(OTLP) comunes: las aplicaciones se instrumentan una sola vez y el backend pasa a ser una decisión
+intercambiable.
 
-**OpenTelemetry (OTel)**, proyecto de la CNCF, resuelve ese acoplamiento con una especificación,
-unos SDK y un protocolo (OTLP) comunes. Las aplicaciones se instrumentan una sola vez y el backend
-pasa a ser una decisión intercambiable.
+En paralelo, la operación de plataformas *stateful* ha migrado hacia **operadores de Kubernetes**,
+que codifican el conocimiento operativo (certificados, actualizaciones, recuperación) en software.
+ECK es el operador oficial de Elastic y está disponible sin coste con la licencia Basic.
 
 Este proyecto pretende demostrar en la práctica que:
 
-1. es posible construir una plataforma de observabilidad de calidad de producción sin agentes
-   propietarios;
-2. esa plataforma puede ser altamente disponible con recursos modestos (tres hosts);
+1. es posible construir una plataforma de observabilidad de calidad de producción, on-premise, sin
+   agentes propietarios y **sin coste de licencias**;
+2. esa plataforma puede ser altamente disponible con recursos modestos (tres hosts físicos);
 3. su comportamiento ante fallos se puede **medir** en lugar de suponer.
 
 ## 2. Objetivos
@@ -43,139 +46,137 @@ Este proyecto pretende demostrar en la práctica que:
 | # | Objetivo | Criterio de éxito |
 |---|---|---|
 | O1 | Instrumentar dos aplicaciones reales con OTel | Trazas, métricas y logs correlacionados en Kibana |
-| O2 | Clúster ES tolerante a la caída de un nodo | El clúster sigue aceptando escrituras con 2 de 3 nodos |
+| O2 | Plataforma tolerante a la caída de un host | etcd y Elasticsearch mantienen quórum con 2 de 3 nodos |
 | O3 | Pipeline de telemetría sin punto único de fallo | Ningún componente aislado detiene la ingesta |
-| O4 | Reproducibilidad total | `terraform apply` + `ansible-playbook` desde cero |
-| O5 | Validación empírica | Experimentos E1–E4 documentados con resultados |
+| O4 | Reproducibilidad total | `terraform apply` → `ansible-playbook` → `helmfile apply` desde cero |
+| O5 | Coste de licencias cero | Solo funciones de la licencia Basic (ADR-0005) |
+| O6 | Validación empírica | Experimentos E1–E4 documentados con resultados |
 
 ## 3. Arquitectura
 
 ### 3.1 Vista general
 
-La plataforma consta de cuatro máquinas virtuales:
-
-- **es-01, es-02, es-03:** nodos de Elasticsearch (roles *master*, *data* e *ingest*). Cada una
-  ejecuta además un *gateway* OTel (EDOT Collector) y un *agent* OTel. es-01 aloja también Kibana.
-- **apps:** ejecuta Ascenda y la aplicación BJJ, junto con un *agent* OTel.
-
-Cada VM de Elasticsearch se despliega en un **host físico distinto**, de modo que la pérdida de un
-host equivale a la pérdida de un único nodo del clúster.
-
 ```
- Aplicaciones (SDK OTel) ──OTLP──▶ Agent local ──OTLP/TLS──▶ VIP gateway ──▶ Gateways (x3) ──▶ Elasticsearch (x3) ◀── Kibana
- Host / logs / ES stats ─────────▶ Agent local ─────────────▶ Gateway local ─┘
+ Hosts de aplicaciones (fuera del clúster)                 Clúster k3s (3 VMs KVM, una por host físico)
+ ┌──────────────────────────────┐                ┌───────────────────────────────────────────────────┐
+ │ Ascenda / BJJ ──OTLP──▶ agente │──OTLP/TLS──▶ │ IP MetalLB ─▶ Gateway EDOT x2 ─▶ Elasticsearch x3 │
+ │ (SDK OTel)      otelcol + cola │              │                  ▲                  ▲  (ECK)      │
+ └──────────────────────────────┘                │ DaemonSet agente ┘   Kibana (ECK) ──┘             │
+                                                 │ Colector cluster-stats ─▶ gateway                 │
+                                                 └───────────────────────────────────────────────────┘
 ```
+
+| Capa | Componente | Gestión |
+|---|---|---|
+| Cómputo | 3 VMs KVM (Debian 13, 16 GB), una por host físico | Terraform + cloud-init |
+| Orquestación | k3s, 3 *servers* con etcd embebido | Ansible |
+| Red | MetalLB (modo L2) | Helm |
+| Certificados | cert-manager con una CA de laboratorio | Helm |
+| Almacenamiento y UI | Elasticsearch ×3 + Kibana | Operador ECK |
+| Telemetría | Agente DaemonSet, colector de clúster, gateway EDOT ×2 | OpenTelemetry Operator |
 
 ### 3.2 Flujo de la telemetría
 
-1. **Generación.** Los SDK de OTel (auto-instrumentación más spans de negocio) emiten trazas,
-   métricas y logs por OTLP a `127.0.0.1`.
-2. **Agente (uno por VM).** Recoge además métricas del host (`hostmetrics`), logs de `journald`,
-   logs JSON de Elasticsearch y métricas internas del propio clúster (`elasticsearch` receiver).
-   Añade atributos de recurso (`host.name`, `deployment.environment.name`) y encola en disco
-   (`file_storage`) lo que no puede entregar.
-3. **Gateway (tres instancias).** Recibe OTLP con TLS, aplica `memory_limiter` y `batch`, y
-   enriquece las trazas para el APM de Kibana (`elasticapm` processor/connector). El conector
-   `elasticapm` genera las métricas agregadas de latencia, *throughput* y tasa de errores.
-4. **Almacenamiento.** El exportador `elasticsearch` en modo `otel` escribe documentos
-   **OTel-native** en *data streams* (`traces-*`, `metrics-*`, `logs-*`), repartiendo la carga
-   entre los tres nodos.
-5. **Visualización.** Kibana (Observability → Applications, Hosts, Logs) y dashboards propios.
+1. **Generación.** Las aplicaciones (fuera del clúster) emiten OTLP a un agente local
+   (`otelcol-contrib`), que añade métricas de host y logs de `journald`, encola en disco y reenvía
+   por TLS a la IP de MetalLB del gateway.
+2. **Agente del clúster (DaemonSet).** En cada nodo recoge los logs de los contenedores, métricas
+   del kubelet y del host, y enriquece con metadatos de Kubernetes (`k8sattributes`).
+3. **Colector de clúster.** Una única réplica recoge el estado de los objetos de Kubernetes y los
+   eventos.
+4. **Gateway (EDOT, 2 réplicas).** Recibe OTLP, aplica `memory_limiter` y `batch`, y enriquece las
+   trazas para el APM de Kibana (`elasticapm`). Es el único componente con credenciales de
+   Elasticsearch.
+5. **Almacenamiento.** El exportador `elasticsearch` en modo `otel` escribe documentos
+   **OTel-native** en *data streams* (`traces-*`, `metrics-*`, `logs-*`).
+6. **Visualización.** Kibana (APM, Logs, Metrics, Infrastructure) y dashboards propios.
 
 ## 4. Decisiones de diseño
 
-Las decisiones se documentan en formato ADR en [`docs/adr/`](adr/). Este apartado las resume.
+Las decisiones se documentan en formato ADR en [`docs/adr/`](adr/). Resumen:
 
-### 4.1 Máquinas virtuales KVM frente a contenedores LXC (ADR-0001)
+### 4.1 Nodos como VMs KVM (ADR-0001)
 
-Elasticsearch necesita parámetros de kernel (`vm.max_map_count`), control del *swap* y límites de
-memoria predecibles para la JVM. En un contenedor LXC el kernel es el del host, así que esos ajustes
-afectan al hipervisor. Con KVM, cada VM tiene su propio kernel y la configuración se asemeja a la de
-un entorno de producción en cloud u *on-premise*. Además:
+Kubernetes y Elasticsearch necesitan su propio kernel (`vm.max_map_count`, cgroups, sin *swap*).
+Con KVM cada nodo es autónomo y el hipervisor queda genérico: `cpu=host`, sin *ballooning* y discos
+`virtio-scsi-single` con `iothread`.
 
-- `cpu=host` expone las instrucciones SIMD (AVX) que Elasticsearch aprovecha.
-- El *ballooning* está desactivado: el *heap* de la JVM no debe ser reclamado por el hipervisor.
-- Discos `virtio-scsi-single` con `iothread` y `discard`.
+### 4.2 ECK sobre k3s (ADR-0004)
 
-### 4.2 Tres nodos *master-eligible*
+- **k3s** con tres *servers* y etcd embebido proporciona un plano de control en alta disponibilidad
+  con un consumo de memoria reducido, lo que deja más RAM para Elasticsearch.
+- **ECK** gestiona el clúster de Elasticsearch (3 nodos *master + data + ingest*, uno por nodo
+  mediante *anti-affinity* obligatoria) y Kibana: certificados TLS internos, usuario `elastic`,
+  actualizaciones progresivas y *PodDisruptionBudgets*.
+- **Volúmenes `local-path`:** Elasticsearch replica los *shards*, así que el disco local del nodo es
+  la opción recomendada y la más rápida.
+- **Usuarios declarativos:** el usuario de los colectores (`otel_writer`) y su rol se declaran en
+  *Secrets* referenciados por el recurso `Elasticsearch`. La contraseña se genera en la primera
+  instalación y nunca está en git.
 
-Un clúster necesita una mayoría de nodos elegibles como *master* para elegir líder: con tres nodos,
-el quórum es dos. Por tanto, el clúster tolera la pérdida de un nodo sin *split-brain*. Con una
-réplica por shard, cualquier nodo puede caer sin perder datos.
+### 4.3 OpenTelemetry nativo (ADR-0002)
 
-### 4.3 OpenTelemetry nativo frente a agentes APM propietarios (ADR-0002)
+SDK de OTel en las aplicaciones y modo de mapeo `otel` en el exportador. Los componentes
+específicos de Elastic quedan confinados al gateway, de modo que cambiar de backend solo afecta a
+esa capa.
 
-Se descartan los agentes APM clásicos en favor de los SDK de OTel y del modo de mapeo `otel` del
-exportador. Así, el backend es intercambiable y los datos conservan la semántica de las
-*semantic conventions* de OTel.
+### 4.4 Colectores en dos niveles con el OpenTelemetry Operator (ADR-0003)
 
-### 4.4 Colectores en dos niveles (ADR-0003)
-
-| Nivel | Responsabilidad | Motivo |
+| Nivel | Implementación | Responsabilidad |
 |---|---|---|
-| *Agent* | Recogida local, metadatos de host, *buffer* en disco | Desacopla la app de la red y del backend |
-| *Gateway* | TLS, credenciales, enriquecimiento APM, escritura en ES | Centraliza secretos y procesamiento pesado |
+| Agente | DaemonSet + colector de clúster; `otelcol` en hosts externos | Recogida local, metadatos, *buffer* |
+| Gateway | Deployment EDOT ×2 detrás de un Service | TLS, credenciales, enriquecimiento APM, escritura en ES |
 
-Las aplicaciones nunca conocen credenciales de Elasticsearch, y el *agent* solo necesita alcanzar
-el *gateway*.
+El Service de Kubernetes solo enruta a réplicas sanas, por lo que la caída de un gateway no debería
+interrumpir la ingesta. Esta hipótesis se comprueba en E2.
 
-### 4.5 Alta disponibilidad del *gateway*: VIP con VRRP
+### 4.5 Solo licencia Basic (ADR-0005)
 
-Los tres *gateways* comparten una IP virtual gestionada por **keepalived**. El *script* de salud
-consulta la extensión `health_check` del colector: si el *gateway* activo deja de responder, la VIP
-migra a otro nodo en pocos segundos. Se usa VRRP en modo *unicast* para no depender de *multicast*
-a través de los puentes virtuales.
+Según la matriz oficial de suscripciones *self-managed*, la licencia Basic incluye ECK, la ingesta
+OpenTelemetry, APM Server y la aplicación APM, TLS, RBAC, ILM, *snapshots* y las alertas de Kibana
+con conectores *Index* y *Server log*. **No** incluye los *service maps* del APM, los SLO, los
+conectores de notificación (email, Slack, *webhook*) ni el *machine learning*. Se sustituyen por:
 
-Mientras dura la conmutación, el *agent* reintenta indefinidamente (`max_elapsed_time: 0`) y
-conserva los datos en la cola persistente, por lo que la conmutación **no debería implicar pérdida
-de datos**. Esta hipótesis se comprueba en el experimento E4.
-
-### 4.6 PKI propia
-
-Ansible genera una CA de laboratorio y un certificado por VM (con SAN para nombre, FQDN, IP y, en
-los *gateways*, la VIP). La CA se instala en el almacén del sistema, de modo que todos los clientes
-(colectores, Kibana, `curl`) verifican TLS sin desactivar comprobaciones.
+- reglas de umbral sobre el ratio de errores y la latencia p95 (SLI sin presupuesto de error);
+- **ElastAlert2** (software libre) para las notificaciones;
+- las vistas de dependencias y la cascada de trazas del APM en lugar del mapa de servicios.
 
 ## 5. Implementación
 
 ### 5.1 Infraestructura (Terraform)
 
-- Proveedor `bpg/proxmox` como implementación de referencia.
-- Imagen cloud oficial de Debian 13, configurada mediante *cloud-init* (usuario, clave SSH,
-  `qemu-guest-agent`).
-- Terraform **genera el inventario de Ansible**. Este fichero no se versiona porque contiene las IP
-  reales.
+Proveedor `bpg/proxmox` como implementación de referencia: imagen *cloud* de Debian 13,
+*cloud-init* y validación de que hay exactamente tres nodos en tres hosts distintos. Terraform
+genera el inventario de Ansible, que no se versiona.
 
-### 5.2 Configuración (Ansible)
+### 5.2 Sistema operativo y Kubernetes (Ansible)
 
 | Rol | Función |
 |---|---|
-| `pki` | CA y certificados (en la máquina de control) |
-| `common` | Paquetes base, zona horaria, `/etc/hosts`, confianza en la CA |
-| `elasticsearch` | Instalación fijada a una versión, `sysctl`, TLS, *heap*, usuarios y roles |
-| `kibana` | Instalación, TLS, conexión a los tres nodos |
-| `otel_gateway` | EDOT Collector como servicio systemd |
-| `keepalived` | VIP del *gateway* con *health check* |
-| `otel_agent` | `otelcol-contrib` con cola persistente |
+| `common` | Paquetes base, zona horaria, `/etc/hosts`, *swap* desactivado |
+| `k3s` | `sysctl` (Elasticsearch y *inotify*), configuración e instalación de k3s; el primer nodo inicializa etcd y los demás se unen de uno en uno; copia del *kubeconfig* |
+| `otel_agent` | `otelcol-contrib` en los hosts de las aplicaciones, con cola persistente y confianza en la CA del clúster |
 | `app_instrumentation` | *Drop-ins* systemd con variables `OTEL_*` |
 
-**Principio de mínimo privilegio:** los colectores usan el usuario `otel_writer`, que solo puede
-crear documentos en `logs-*`, `metrics-*` y `traces-*` y leer estadísticas del clúster.
+### 5.3 Plataforma (Helmfile)
 
-### 5.3 Modelo de datos
+Un único `helmfile apply` despliega, en orden y con dependencias explícitas: cert-manager, MetalLB,
+el operador ECK, el *chart* propio `lab-platform` (CA, *pool* de IPs, Elasticsearch, Kibana,
+credenciales, Service externo del gateway) y el *chart* `opentelemetry-kube-stack`.
 
-El modo `otel` escribe en *data streams* separados por señal y por *dataset*. La retención se
-gestiona con el ciclo de vida de los *data streams* (p. ej., 7 días para trazas y 30 para métricas)
-mediante plantillas `@custom`, sin modificar las plantillas gestionadas por Elastic.
+### 5.4 Modelo de datos
+
+El modo `otel` escribe en *data streams* separados por señal y *dataset*. La retención se gestiona
+con el ciclo de vida de los *data streams* (por ejemplo, 7 días para trazas y 30 para métricas)
+mediante plantillas `@custom`.
 
 ## 6. Instrumentación de las aplicaciones
 
 - **Auto-instrumentación** sin cambios de código: HTTP, base de datos y clientes salientes.
-- **Spans de negocio** en las operaciones clave de cada aplicación (por ejemplo, reservas de clase
-  o *check-in* en la aplicación BJJ).
-- **Correlación logs–trazas:** el *bridge* de logs de OTel añade `trace_id` y `span_id` a cada
-  línea.
-- **Privacidad:** no se registran datos personales en atributos ni en logs, solo identificadores.
+- **Spans de negocio** en las operaciones clave (por ejemplo, reservas de clase o *check-in* en la
+  aplicación BJJ).
+- **Correlación logs–trazas** mediante el *bridge* de logs de OTel.
+- **Privacidad:** sin datos personales en atributos ni logs.
 - **Muestreo:** `parentbased_traceidratio`, configurable por servicio.
 
 ## 7. Metodología experimental
@@ -184,12 +185,10 @@ Cada experimento se repite **n = 10** veces. Se publican la mediana y el percent
 
 | ID | Experimento | Métrica | Hipótesis |
 |---|---|---|---|
-| E1 | Parada abrupta (`stop`) de un nodo ES | Tiempo de detección; tiempo hasta *green* tras el arranque | El clúster sigue aceptando escrituras en *yellow* |
-| E2 | Parada del *gateway* que posee la VIP | Tiempo sin ingesta a través de la VIP | Menos de 5 s |
-| E3 | Carga sostenida con k6 (20 VU, 10 min) | Latencia p95 de la app con y sin instrumentación; CPU/RAM de los colectores | *Overhead* de latencia inferior al 5 % |
-| E4 | E2 con generación constante de spans | Spans generados frente a spans almacenados | Pérdida cero gracias a la cola persistente |
-
-Los *scripts* están en [`experiments/`](../experiments/).
+| E1 | Parada abrupta de la VM de un nodo k3s | Tiempo hasta que ECK informa de la degradación; tiempo hasta *green* tras el arranque | El clúster sigue aceptando escrituras en *yellow* y etcd mantiene el quórum |
+| E2 | Borrado forzado de un *pod* gateway | Sondas OTLP fallidas a través de la IP de MetalLB; tiempo hasta recuperar las réplicas | Cero o casi cero sondas fallidas |
+| E3 | Carga sostenida con k6 (20 VU, 10 min) | Latencia p95 con y sin instrumentación; CPU/RAM de los colectores | *Overhead* de latencia inferior al 5 % |
+| E4 | E1 y E2 con generación constante de spans | Spans generados frente a almacenados | Pérdida cero gracias a las colas y reintentos |
 
 ## 8. Resultados
 
@@ -199,26 +198,27 @@ Los *scripts* están en [`experiments/`](../experiments/).
 |---|---|---|---|
 | E1 – detección | – | – | – |
 | E1 – recuperación a *green* | – | – | – |
-| E2 – corte de ingesta | – | – | – |
+| E2 – sondas fallidas | – | – | – |
 | E3 – *overhead* de latencia | – | – | – |
 | E4 – spans perdidos | – | – | – |
 
 ## 9. Seguridad
 
-- TLS en todos los saltos de red (transporte y HTTP de ES, Kibana, OTLP hacia los *gateways*).
-- Secretos en Ansible Vault. CI con `gitleaks` para evitar filtraciones.
-- Usuarios dedicados con privilegios mínimos.
-- El repositorio no contiene IP, dominios ni topología reales: solo valores de ejemplo.
+- TLS en todos los saltos expuestos: Elasticsearch (ECK), Kibana y OTLP externo (cert-manager).
+- Usuario de los colectores con privilegios mínimos (`create_doc` en `logs-*`, `metrics-*` y
+  `traces-*`).
+- Secretos fuera de git: Ansible Vault (token de k3s) y contraseñas generadas en el clúster.
+- CI con `gitleaks`. El repositorio solo contiene valores de ejemplo.
 
 ## 10. Limitaciones y trabajo futuro
 
-- Kibana es una única instancia (no es crítica para la ingesta).
-- Falta muestreo por cola (*tail sampling*), que requiere enrutar por `trace_id` (exportador
-  `loadbalancing`).
-- SLO, dashboards y alertas como código con el proveedor Terraform `elastic/elasticstack`.
-- Aplicación de demostración políglota para que cualquiera pueda reproducir el laboratorio.
-- Perfilado continuo (señal *profiles* de OTel).
-- Instantáneas (*snapshots*) de ES a almacenamiento S3 compatible.
+- Una sola instancia de Kibana (no es crítica para la ingesta).
+- El *kubeconfig* apunta al primer nodo: el plano de control es HA, pero el acceso administrativo
+  no lo es (mejora: VIP con kube-vip).
+- Sin presupuestos de error ni mapa de servicios (limitaciones de la licencia Basic).
+- *Tail sampling* (requiere el exportador `loadbalancing`).
+- *Snapshots* a almacenamiento S3 compatible con SLM.
+- GitOps con Argo CD y aplicación de demostración dentro del clúster.
 
 ## 11. Conclusiones
 
@@ -227,8 +227,10 @@ Los *scripts* están en [`experiments/`](../experiments/).
 ## Referencias
 
 1. OpenTelemetry Specification. https://opentelemetry.io/docs/specs/
-2. OpenTelemetry Collector – *Deployment patterns (agent / gateway)*. https://opentelemetry.io/docs/collector/deployment/
-3. Elastic Distributions of OpenTelemetry (EDOT). https://www.elastic.co/docs/reference/opentelemetry
-4. Elasticsearch – *Discovery and cluster formation*. https://www.elastic.co/docs/deploy-manage/distributed-architecture/discovery-cluster-formation
-5. Keepalived – VRRP. https://keepalived.readthedocs.io/
-6. Principles of Chaos Engineering. https://principlesofchaos.org/
+2. OpenTelemetry Operator y `opentelemetry-kube-stack`. https://github.com/open-telemetry/opentelemetry-helm-charts
+3. Elastic Cloud on Kubernetes. https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s
+4. Elastic Distributions of OpenTelemetry (EDOT). https://www.elastic.co/docs/reference/opentelemetry
+5. Elastic self-managed subscriptions. https://www.elastic.co/subscriptions
+6. k3s – High Availability Embedded etcd. https://docs.k3s.io/datastore/ha-embedded
+7. MetalLB. https://metallb.io/
+8. Principles of Chaos Engineering. https://principlesofchaos.org/

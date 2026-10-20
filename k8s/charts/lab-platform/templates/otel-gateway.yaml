@@ -1,0 +1,38 @@
+# External entry point for agents outside the cluster: a MetalLB IP in front of
+# the gateway pods' TLS receivers (4417/4418), published on the standard OTLP ports.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: otel-gateway-tls
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: otel-gateway-tls
+  dnsNames:
+    - otel-gw.{{ .Values.domain }}
+    - {{ .Values.otelGateway.collectorName }}.{{ .Release.Namespace }}.svc
+  ipAddresses:
+    - {{ .Values.ips.otelGateway | quote }}
+  issuerRef:
+    name: lab-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-gateway-external
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    metallb.io/loadBalancerIPs: {{ .Values.ips.otelGateway | quote }}
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: {{ .Values.otelGateway.collectorName }}
+    app.kubernetes.io/component: opentelemetry-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4417
+    - name: otlp-http
+      port: 4318
+      targetPort: 4418

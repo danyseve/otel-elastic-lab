@@ -1,45 +1,47 @@
 #!/usr/bin/env bash
-# E1 - Hard-stop one Elasticsearch VM and measure cluster recovery.
+# E1 - Hard-stop one k3s node VM and measure how Elasticsearch (ECK) degrades and recovers.
 #
 # Usage: es-node-failure.sh <hypervisor-host> <vmid>
-# Env:   ES_URL (a node that is NOT being stopped), ELASTIC_PASSWORD,
-#        CA_CERT (default: ansible/.pki/ca.crt), DOWNTIME (seconds, default 120)
+# Env:   KUBECONFIG (default: ansible/.kube/config), NAMESPACE (default: observability),
+#        DOWNTIME (seconds the VM stays off, default 120),
+#        STOP_CMD / START_CMD (default: Proxmox "qm stop/start <vmid>" over ssh as root)
 # Values are expanded locally on purpose before being sent over ssh.
 # shellcheck disable=SC2029
 set -euo pipefail
 
-PVE_HOST="${1:?hypervisor host}"
+HV_HOST="${1:?hypervisor host}"
 VMID="${2:?vmid}"
-ES_URL="${ES_URL:?set ES_URL to a surviving node}"
-: "${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD}"
-CA_CERT="${CA_CERT:-$(dirname "$0")/../../ansible/.pki/ca.crt}"
+export KUBECONFIG="${KUBECONFIG:-$(dirname "$0")/../../ansible/.kube/config}"
+NAMESPACE="${NAMESPACE:-observability}"
 DOWNTIME="${DOWNTIME:-120}"
+STOP_CMD="${STOP_CMD:-qm stop ${VMID}}"
+START_CMD="${START_CMD:-qm start ${VMID}}"
 OUT="$(dirname "$0")/../results/e1-$(date +%Y%m%d-%H%M%S).csv"
 mkdir -p "$(dirname "$OUT")"
 
 now() { date +%s.%N; }
-status() {
-  curl -s --max-time 2 --cacert "$CA_CERT" -u "elastic:${ELASTIC_PASSWORD}" \
-    "${ES_URL}/_cluster/health" | jq -r '.status // "unreachable"' || echo unreachable
+# ECK reports the cluster health on the Elasticsearch resource itself.
+health() {
+  kubectl -n "$NAMESPACE" get elasticsearch lab -o jsonpath='{.status.health}' 2>/dev/null || echo unknown
 }
 wait_for() { # $1 = regex of acceptable states
-  until [[ "$(status)" =~ $1 ]]; do sleep 0.5; done
+  until [[ "$(health)" =~ $1 ]]; do sleep 1; done
 }
 
-echo "Initial status: $(status)"
-[[ "$(status)" == "green" ]] || { echo "Cluster must be green before the test"; exit 1; }
+echo "Initial health: $(health)"
+[[ "$(health)" == "green" ]] || { echo "Cluster must be green before the test"; exit 1; }
 
 t_stop=$(now)
-ssh "root@${PVE_HOST}" "qm stop ${VMID}"
+ssh "root@${HV_HOST}" "${STOP_CMD}"
 echo "VM ${VMID} stopped (hard)."
 
-wait_for '^(yellow|red)$'; t_degraded=$(now)
-echo "Cluster degraded: $(status)"
+wait_for '^(yellow|red|unknown)$'; t_degraded=$(now)
+echo "Cluster degraded: $(health)"
 
 sleep "$DOWNTIME"
 
 t_start=$(now)
-ssh "root@${PVE_HOST}" "qm start ${VMID}"
+ssh "root@${HV_HOST}" "${START_CMD}"
 wait_for '^green$'; t_green=$(now)
 
 detect=$(echo "$t_degraded - $t_stop" | bc)

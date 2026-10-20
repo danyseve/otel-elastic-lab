@@ -2,25 +2,12 @@ lab_environment: lab
 lab_timezone: Europe/Madrid
 
 # Pin versions; bump deliberately.
-elastic_version: "9.2.0"
+k3s_version: "v1.33.5+k3s1"
 otelcol_version: "0.136.0"
 
-es_cluster_name: otel-lab
-
-# Floating IP shared by the OTel gateways (keepalived/VRRP). Must be free in your network.
-otel_gateway_vip: 10.0.0.10
-otel_gateway_vip_prefix: 24
+# MetalLB IP of the OTel gateway Service. Must match ips.otelGateway in k8s/values/lab.yaml.
+otel_gateway_lb_ip: 10.0.0.40
 otel_gateway_fqdn: "otel-gw.{{ lab_domain }}"
 
-# Lab CA and host certificates are generated here (git-ignored).
-pki_dir: "{{ playbook_dir }}/.pki"
-
-# Least-privilege user the collectors use to write into Elasticsearch.
-otel_es_user: otel_writer
-
 # Secrets live in group_vars/all/vault.yml (ansible-vault).
-elastic_password: "{{ vault_elastic_password }}"
-kibana_system_password: "{{ vault_kibana_system_password }}"
-otel_es_password: "{{ vault_otel_writer_password }}"
-kibana_encryption_key: "{{ vault_kibana_encryption_key }}"
-keepalived_auth_pass: "{{ vault_keepalived_auth_pass }}"
+k3s_token: "{{ vault_k3s_token }}"

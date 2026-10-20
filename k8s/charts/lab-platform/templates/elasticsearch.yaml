@@ -1,0 +1,45 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: lab
+  namespace: {{ .Release.Namespace }}
+spec:
+  version: {{ .Values.elastic.version | quote }}
+  # Collector credentials are declared, not created by hand (see otel-writer.yaml).
+  auth:
+    roles:
+      - secretName: otel-writer-role
+    fileRealm:
+      - secretName: otel-writer-user
+  nodeSets:
+    - name: default
+      count: {{ .Values.elastic.esCount }}
+      config:
+        node.roles: ["master", "data", "ingest"]
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  memory: {{ .Values.elastic.esMemory }}
+                  cpu: {{ .Values.elastic.esCpu | quote }}
+                limits:
+                  memory: {{ .Values.elastic.esMemory }}
+          # One ES node per k3s node, so one host failure never costs two copies of a shard.
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/cluster-name: lab
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: {{ .Values.elastic.storageClass }}
+            resources:
+              requests:
+                storage: {{ .Values.elastic.esStorage }}

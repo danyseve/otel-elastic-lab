@@ -1,18 +1,15 @@
 otel_agent_release_base: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download
 otel_agent_deb_url: "{{ otel_agent_release_base }}/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
 
-# Accept OTLP from local applications (enabled on the apps VM).
-otel_agent_otlp_enabled: false
+# Applications on this host send OTLP here (no TLS, loopback only).
 otel_agent_otlp_bind: 127.0.0.1
 
 otel_agent_journald_units:
   - ssh.service
   - otelcol-contrib.service
 
-otel_agent_collect_es: "{{ 'elasticsearch' in group_names }}"
-otel_agent_is_gateway_host: "{{ 'otel_gateway' in group_names }}"
-
-# Gateway hosts ship to their local gateway; everyone else goes through the VIP.
-otel_agent_exporter_endpoint: "{{ 'localhost:4317' if otel_agent_is_gateway_host else otel_gateway_fqdn ~ ':4317' }}"
+# Gateway Service in the cluster (MetalLB IP), TLS signed by the lab CA.
+otel_agent_exporter_endpoint: "{{ otel_gateway_fqdn }}:4317"
+otel_agent_ca_path: /usr/local/share/ca-certificates/otel-lab-ca.crt
 
 otel_agent_storage_dir: /var/lib/otelcol-contrib/storage

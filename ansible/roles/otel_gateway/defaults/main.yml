@@ -1,5 +1,0 @@
-# EDOT Collector ships inside the Elastic Agent package ("elastic-agent otel").
-otel_gateway_version: "{{ elastic_version }}"
-otel_gateway_install_dir: /opt/edot
-otel_gateway_release: "elastic-agent-{{ otel_gateway_version }}-linux-x86_64"
-otel_gateway_url: "https://artifacts.elastic.co/downloads/beats/elastic-agent/{{ otel_gateway_release }}.tar.gz"

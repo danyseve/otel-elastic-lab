@@ -1,0 +1,9 @@
+# Copy to inventory/apps.yml: existing hosts (VMs, containers) that run the
+# applications outside the cluster. They get an OTel agent and the OTEL_* env.
+all:
+  children:
+    apps:
+      hosts:
+        apps-01:
+          ansible_host: 10.0.0.20
+          ansible_user: debian

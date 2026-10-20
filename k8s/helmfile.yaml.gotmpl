@@ -1,0 +1,66 @@
+# Whole in-cluster platform. Usage (from k8s/): helmfile apply
+# Chart versions are pinned on purpose: check for newer ones with
+#   helm search repo <repo>/<chart> --versions
+environments:
+  default:
+    values:
+      - values/lab.yaml
+
+---
+helmDefaults:
+  wait: true
+  timeout: 900
+  createNamespace: true
+
+repositories:
+  - name: jetstack
+    url: https://charts.jetstack.io
+  - name: metallb
+    url: https://metallb.github.io/metallb
+  - name: elastic
+    url: https://helm.elastic.co
+  - name: open-telemetry
+    url: https://open-telemetry.github.io/opentelemetry-helm-charts
+
+releases:
+  # TLS for Kibana and the OTel gateway, plus the OTel Operator webhooks.
+  - name: cert-manager
+    namespace: cert-manager
+    chart: jetstack/cert-manager
+    version: v1.18.2
+    values:
+      - crds:
+          enabled: true
+
+  # LoadBalancer IPs on bare metal / VMs (L2 mode).
+  - name: metallb
+    namespace: metallb-system
+    chart: metallb/metallb
+    version: 0.15.2
+
+  # Elastic Cloud on Kubernetes - Basic (free) license by default.
+  - name: eck-operator
+    namespace: elastic-system
+    chart: elastic/eck-operator
+    version: 3.1.0
+
+  # Our chart: CA, IP pool, Elasticsearch, Kibana, collector credentials.
+  - name: lab-platform
+    namespace: observability
+    chart: ./charts/lab-platform
+    needs:
+      - cert-manager/cert-manager
+      - metallb-system/metallb
+      - elastic-system/eck-operator
+    values:
+      - values/lab.yaml
+
+  # OpenTelemetry Operator + collectors (DaemonSet agent, cluster stats, gateway).
+  - name: otel
+    namespace: observability
+    chart: open-telemetry/opentelemetry-kube-stack
+    version: 0.11.1
+    needs:
+      - observability/lab-platform
+    values:
+      - values/otel-kube-stack.yaml.gotmpl

@@ -1,22 +1,17 @@
-# The local agent receives OTLP from the applications on this VM.
-otel_agent_otlp_enabled: true
+# Hosts outside the cluster that run the applications (inventory/apps.yml).
 
 otel_agent_journald_units:
   - ssh.service
   - otelcol-contrib.service
-  - ascenda.service
-  - bjj-app.service
+  - docker.service
 
 # systemd services that get OTEL_* environment variables injected (see apps/README.md).
+# For Docker Compose apps, set the same variables in a compose override instead.
 instrumented_services: []
 # instrumented_services:
-#   - unit: ascenda.service
-#     service_name: ascenda
-#     version: "1.0.0"
-#     sample_ratio: 1.0
-#     extra_env:
-#       JAVA_TOOL_OPTIONS: "-javaagent:/opt/otel/opentelemetry-javaagent.jar"
 #   - unit: bjj-app.service
 #     service_name: bjj-app
+#     version: "1.0.0"
+#     sample_ratio: 1.0
 #     extra_env:
 #       NODE_OPTIONS: "--require @opentelemetry/auto-instrumentations-node/register"

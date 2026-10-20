@@ -1,8 +1,3 @@
 # cp vault.yml.example vault.yml && ansible-vault encrypt vault.yml
-vault_elastic_password: "change-me"
-vault_kibana_system_password: "change-me"
-vault_otel_writer_password: "change-me"
-# At least 32 characters: openssl rand -hex 32
-vault_kibana_encryption_key: "change-me-change-me-change-me-change-me"
-# VRRP PASS auth uses at most 8 characters.
-vault_keepalived_auth_pass: "chg-me"
+# Shared secret the k3s servers use to join the cluster: openssl rand -hex 32
+vault_k3s_token: "change-me"

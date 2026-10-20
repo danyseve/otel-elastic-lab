@@ -1,22 +1,21 @@
 # {{ ansible_managed }}
-# Agent tier: one per VM. Collects local signals and forwards them over OTLP
-# to the gateway tier, buffering on disk when the gateway is unreachable.
+# Agent for hosts outside the cluster: receives OTLP from local apps, adds host
+# signals and forwards everything to the in-cluster gateway over TLS, buffering
+# on disk while the gateway is unreachable.
 
 extensions:
   health_check:
-    endpoint: 127.0.0.1:13134
+    endpoint: 127.0.0.1:13133
   file_storage:
     directory: {{ otel_agent_storage_dir }}
 
 receivers:
-{% if otel_agent_otlp_enabled %}
   otlp:
     protocols:
       grpc:
         endpoint: {{ otel_agent_otlp_bind }}:4317
       http:
         endpoint: {{ otel_agent_otlp_bind }}:4318
-{% endif %}
 
   hostmetrics:
     collection_interval: 30s
@@ -48,35 +47,14 @@ receivers:
 {% endfor %}
     priority: info
 
-  # "Monitor the monitor": internal metrics of the collectors on this VM.
+  # "Monitor the monitor": the agent's own internal metrics.
   prometheus/otelcol:
     config:
       scrape_configs:
         - job_name: otelcol
           scrape_interval: 30s
           static_configs:
-            - targets: ["127.0.0.1:8889"{% if otel_agent_is_gateway_host %}, "127.0.0.1:8888"{% endif %}]
-
-{% if otel_agent_collect_es %}
-  elasticsearch:
-    endpoint: https://localhost:9200
-    username: ${env:ES_USERNAME}
-    password: ${env:ES_PASSWORD}
-    collection_interval: 30s
-    nodes: ["_local"]
-
-  filelog/elasticsearch:
-    include: [/var/log/elasticsearch/*_server.json]
-    start_at: end
-    operators:
-      - type: json_parser
-        timestamp:
-          parse_from: attributes["@timestamp"]
-          layout_type: gotime
-          layout: "2006-01-02T15:04:05.000Z07:00"
-        severity:
-          parse_from: attributes["log.level"]
-{% endif %}
+            - targets: ["127.0.0.1:8888"]
 
 processors:
   memory_limiter:
@@ -100,6 +78,8 @@ processors:
 exporters:
   otlp/gateway:
     endpoint: {{ otel_agent_exporter_endpoint }}
+    tls:
+      ca_file: {{ otel_agent_ca_path }}
     sending_queue:
       enabled: true
       storage: file_storage
@@ -110,26 +90,16 @@ exporters:
 
 service:
   extensions: [health_check, file_storage]
-  telemetry:
-    metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: 127.0.0.1
-                port: 8889
   pipelines:
-    metrics:
-      receivers: [hostmetrics, prometheus/otelcol{% if otel_agent_collect_es %}, elasticsearch{% endif %}{% if otel_agent_otlp_enabled %}, otlp{% endif %}]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlp/gateway]
-    logs:
-      receivers: [journald{% if otel_agent_collect_es %}, filelog/elasticsearch{% endif %}{% if otel_agent_otlp_enabled %}, otlp{% endif %}]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlp/gateway]
-{% if otel_agent_otlp_enabled %}
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, resource, batch]
       exporters: [otlp/gateway]
-{% endif %}
+    metrics:
+      receivers: [otlp, hostmetrics, prometheus/otelcol]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/gateway]
+    logs:
+      receivers: [otlp, journald]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/gateway]

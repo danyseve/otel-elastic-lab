@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+token: "{{ k3s_token }}"
+{% if inventory_hostname == k3s_first_server %}
+cluster-init: true
+{% else %}
+server: "https://{{ hostvars[k3s_first_server].ansible_host }}:6443"
+{% endif %}
+node-ip: "{{ ansible_host }}"
+tls-san:
+  - "{{ ansible_host }}"
+  - "{{ inventory_hostname }}.{{ lab_domain }}"
+# MetalLB replaces the bundled service load balancer; no ingress controller needed.
+disable:
+  - servicelb
+  - traefik
+write-kubeconfig-mode: "0600"

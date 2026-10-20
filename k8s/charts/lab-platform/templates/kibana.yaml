@@ -1,0 +1,48 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kibana-tls
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: kibana-tls
+  dnsNames:
+    - kibana.{{ .Values.domain }}
+  ipAddresses:
+    - {{ .Values.ips.kibana | quote }}
+  issuerRef:
+    name: lab-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: lab
+  namespace: {{ .Release.Namespace }}
+spec:
+  version: {{ .Values.elastic.version | quote }}
+  count: 1
+  elasticsearchRef:
+    name: lab
+  config:
+    server.publicBaseUrl: "https://kibana.{{ .Values.domain }}:5601"
+  http:
+    service:
+      metadata:
+        annotations:
+          metallb.io/loadBalancerIPs: {{ .Values.ips.kibana | quote }}
+      spec:
+        type: LoadBalancer
+    tls:
+      certificate:
+        secretName: kibana-tls
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 500m
+            limits:
+              memory: {{ .Values.elastic.kibanaMemory }}

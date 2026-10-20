@@ -86,11 +86,10 @@ variable "ssh_public_key" {
 }
 
 variable "vms" {
-  description = "VMs to create. Put each 'elasticsearch' VM on a different hypervisor host."
+  description = "Kubernetes (k3s) nodes. Put each one on a different hypervisor host."
   type = map(object({
     node      = string
     vm_id     = number
-    role      = string
     ip        = string
     cores     = number
     memory_mb = number
@@ -98,12 +97,12 @@ variable "vms" {
   }))
 
   validation {
-    condition     = alltrue([for vm in values(var.vms) : contains(["elasticsearch", "apps"], vm.role)])
-    error_message = "role must be 'elasticsearch' or 'apps'."
+    condition     = length(var.vms) == 3
+    error_message = "This lab expects exactly 3 nodes (etcd and Elasticsearch quorum)."
   }
 
   validation {
-    condition     = length([for vm in values(var.vms) : vm if vm.role == "elasticsearch"]) == 3
-    error_message = "This lab expects exactly 3 elasticsearch VMs (quorum)."
+    condition     = length(distinct([for vm in values(var.vms) : vm.node])) == 3
+    error_message = "Each node must run on a different hypervisor host."
   }
 }

@@ -1,4 +1,4 @@
 profile: production
 exclude_paths:
-  - .pki/
+  - .kube/
   - group_vars/all/vault.yml.example

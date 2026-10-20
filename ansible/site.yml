@@ -1,11 +1,3 @@
-- name: Lab PKI (runs on the control node)
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  tags: [pki]
-  roles:
-    - pki
-
 - name: Base operating system
   hosts: all
   become: true
@@ -13,38 +5,20 @@
   roles:
     - common
 
-- name: Elasticsearch cluster
-  hosts: elasticsearch
+- name: K3s cluster (3 servers, embedded etcd)
+  hosts: k3s_servers
   become: true
-  tags: [elasticsearch]
+  tags: [k3s]
   roles:
-    - elasticsearch
+    - k3s
 
-- name: Kibana
-  hosts: elasticsearch[0]
-  become: true
-  tags: [kibana]
-  roles:
-    - kibana
+# Everything inside the cluster (ECK, OTel Operator, MetalLB...) is deployed
+# with Helmfile from k8s/ - see `make platform`.
 
-- name: OTel gateway layer (EDOT) behind a VRRP VIP
-  hosts: otel_gateway
-  become: true
-  tags: [otel, gateway]
-  roles:
-    - otel_gateway
-    - keepalived
-
-- name: OTel agents on every VM
-  hosts: all
-  become: true
-  tags: [otel, agent]
-  roles:
-    - otel_agent
-
-- name: Application instrumentation
+- name: OTel agent and instrumentation on hosts outside the cluster
   hosts: apps
   become: true
   tags: [otel, apps]
   roles:
+    - otel_agent
     - app_instrumentation

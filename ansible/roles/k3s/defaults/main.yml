@@ -1,0 +1,13 @@
+k3s_install_url: https://get.k3s.io
+k3s_first_server: "{{ groups['k3s_servers'][0] }}"
+
+# Admin kubeconfig written on the control node (git-ignored), used by Helmfile.
+k3s_kubeconfig_local: "{{ playbook_dir }}/.kube/config"
+
+k3s_sysctls:
+  # Elasticsearch requirement (ECK leaves it to the node).
+  - { name: vm.max_map_count, value: "262144" }
+  - { name: vm.swappiness, value: "1" }
+  # The collector DaemonSet tails every container log.
+  - { name: fs.inotify.max_user_instances, value: "1024" }
+  - { name: fs.inotify.max_user_watches, value: "1048576" }

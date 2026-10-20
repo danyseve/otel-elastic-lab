@@ -45,6 +45,21 @@ jobs:
       - name: shellcheck
         run: shellcheck experiments/chaos/*.sh
 
+  k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint k8s/charts/lab-platform -f k8s/values/lab.yaml.example
+      - name: kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          helm template lab-platform k8s/charts/lab-platform -n observability -f k8s/values/lab.yaml.example \
+            | ./kubeconform -strict -summary \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
   secrets:
     runs-on: ubuntu-latest
     steps:
