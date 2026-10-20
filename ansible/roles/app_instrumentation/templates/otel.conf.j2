@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+[Service]
+Environment="OTEL_SERVICE_NAME={{ item.service_name }}"
+Environment="OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name={{ lab_environment }},service.namespace=otel-lab,service.version={{ item.version | default('unknown') }}"
+Environment="OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318"
+Environment="OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf"
+Environment="OTEL_TRACES_EXPORTER=otlp"
+Environment="OTEL_METRICS_EXPORTER=otlp"
+Environment="OTEL_LOGS_EXPORTER=otlp"
+Environment="OTEL_TRACES_SAMPLER=parentbased_traceidratio"
+Environment="OTEL_TRACES_SAMPLER_ARG={{ item.sample_ratio | default(1.0) }}"
+{% for key, value in (item.extra_env | default({})).items() %}
+Environment="{{ key }}={{ value }}"
+{% endfor %}

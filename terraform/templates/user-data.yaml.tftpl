@@ -1,0 +1,24 @@
+#cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}.${domain}
+# /etc/hosts is managed by Ansible (role 'common').
+manage_etc_hosts: false
+timezone: ${timezone}
+
+users:
+  - name: ${ssh_user}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+ssh_pwauth: false
+package_update: true
+packages:
+  - qemu-guest-agent
+  - python3
+
+runcmd:
+  - systemctl enable --now qemu-guest-agent

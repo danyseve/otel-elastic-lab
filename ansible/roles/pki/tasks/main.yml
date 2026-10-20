@@ -1,0 +1,73 @@
+# Small private CA for the lab: every VM gets a certificate valid for its
+# hostname, FQDN and IP. Gateways also get the VIP name/IP.
+
+- name: Create PKI directory
+  ansible.builtin.file:
+    path: "{{ pki_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/ca.key"
+    mode: "0600"
+
+- name: CA certificate signing request
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/ca.key"
+    common_name: otel-lab CA
+    use_common_name_for_san: false
+    basic_constraints: ["CA:TRUE"]
+    basic_constraints_critical: true
+    key_usage: [keyCertSign, cRLSign]
+    key_usage_critical: true
+  register: pki_ca_csr
+  changed_when: false
+
+- name: Self-signed CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ pki_dir }}/ca.crt"
+    csr_content: "{{ pki_ca_csr.csr }}"
+    privatekey_path: "{{ pki_dir }}/ca.key"
+    provider: selfsigned
+    selfsigned_not_after: "+3650d"
+    mode: "0644"
+
+- name: Host private keys
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/{{ item }}.key"
+    mode: "0600"
+  loop: "{{ groups['all'] }}"
+
+- name: Host certificate signing requests
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/{{ item }}.key"
+    common_name: "{{ item }}.{{ lab_domain }}"
+    subject_alt_name: "{{ pki_base_sans + (pki_gateway_sans if item in groups['otel_gateway'] else []) }}"
+    extended_key_usage: [serverAuth, clientAuth]
+  vars:
+    pki_base_sans:
+      - "DNS:{{ item }}"
+      - "DNS:{{ item }}.{{ lab_domain }}"
+      - "DNS:localhost"
+      - "IP:{{ hostvars[item].ansible_host }}"
+      - "IP:127.0.0.1"
+    pki_gateway_sans:
+      - "DNS:{{ otel_gateway_fqdn }}"
+      - "IP:{{ otel_gateway_vip }}"
+  loop: "{{ groups['all'] }}"
+  register: pki_host_csrs
+  changed_when: false
+
+- name: Host certificates signed by the lab CA
+  community.crypto.x509_certificate:
+    path: "{{ pki_dir }}/{{ item.item }}.crt"
+    csr_content: "{{ item.csr }}"
+    provider: ownca
+    ownca_path: "{{ pki_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ pki_dir }}/ca.key"
+    ownca_not_after: "+825d"
+    mode: "0644"
+  loop: "{{ pki_host_csrs.results }}"
+  loop_control:
+    label: "{{ item.item }}"

@@ -1,0 +1,31 @@
+# Injects standard OTEL_* variables into existing systemd services through a
+# drop-in, so application units stay untouched.
+
+- name: Drop-in directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.unit }}.d"
+    state: directory
+    mode: "0755"
+  loop: "{{ instrumented_services }}"
+  loop_control:
+    label: "{{ item.unit }}"
+
+- name: OpenTelemetry drop-ins
+  ansible.builtin.template:
+    src: otel.conf.j2
+    dest: "/etc/systemd/system/{{ item.unit }}.d/otel.conf"
+    mode: "0644"
+  loop: "{{ instrumented_services }}"
+  loop_control:
+    label: "{{ item.unit }}"
+  register: app_otel_dropins
+
+- name: Restart services whose instrumentation changed
+  ansible.builtin.systemd_service:
+    name: "{{ item.item.unit }}"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ app_otel_dropins.results }}"
+  loop_control:
+    label: "{{ item.item.unit }}"
+  when: item.changed

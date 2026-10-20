@@ -1,0 +1,13 @@
+# Half the RAM for the heap, never above the compressed-oops limit (~31 GB).
+es_heap_mb: "{{ [(ansible_memtotal_mb | int) // 2, 31744] | min }}"
+es_node_roles: [master, data, ingest]
+es_certs_dir: /etc/elasticsearch/certs/lab
+es_keystore_bin: /usr/share/elasticsearch/bin/elasticsearch-keystore
+
+# Secrets written by the package's security auto-configuration. They point at
+# its own PKCS#12 files, which we replace with the lab PKI (PEM).
+es_autoconfig_secrets:
+  - xpack.security.transport.ssl.keystore.secure_password
+  - xpack.security.transport.ssl.truststore.secure_password
+  - xpack.security.http.ssl.keystore.secure_password
+  - autoconfiguration.password_hash

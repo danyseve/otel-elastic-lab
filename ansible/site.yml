@@ -1,0 +1,50 @@
+- name: Lab PKI (runs on the control node)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [pki]
+  roles:
+    - pki
+
+- name: Base operating system
+  hosts: all
+  become: true
+  tags: [common]
+  roles:
+    - common
+
+- name: Elasticsearch cluster
+  hosts: elasticsearch
+  become: true
+  tags: [elasticsearch]
+  roles:
+    - elasticsearch
+
+- name: Kibana
+  hosts: elasticsearch[0]
+  become: true
+  tags: [kibana]
+  roles:
+    - kibana
+
+- name: OTel gateway layer (EDOT) behind a VRRP VIP
+  hosts: otel_gateway
+  become: true
+  tags: [otel, gateway]
+  roles:
+    - otel_gateway
+    - keepalived
+
+- name: OTel agents on every VM
+  hosts: all
+  become: true
+  tags: [otel, agent]
+  roles:
+    - otel_agent
+
+- name: Application instrumentation
+  hosts: apps
+  become: true
+  tags: [otel, apps]
+  roles:
+    - app_instrumentation

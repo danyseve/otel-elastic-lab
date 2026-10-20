@@ -1,0 +1,72 @@
+# {{ ansible_managed }}
+# Gateway tier: receives OTLP from agents and SDKs, derives APM metrics and
+# writes OTel-native documents to Elasticsearch.
+# Check with: {{ edot_install_dir }}/current/elastic-agent otel validate --config /etc/edot/gateway.yaml
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /etc/edot/certs/node.crt
+          key_file: /etc/edot/certs/node.key
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /etc/edot/certs/node.crt
+          key_file: /etc/edot/certs/node.key
+
+connectors:
+  # Builds the aggregated metrics (latency, throughput, errors) that Kibana APM uses.
+  elasticapm: {}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+  batch:
+    send_batch_size: 1000
+    send_batch_max_size: 1500
+    timeout: 1s
+  batch/aggregated:
+    send_batch_max_size: 0
+    timeout: 1s
+  # Enriches spans with the fields Kibana APM needs (transaction/span semantics).
+  elasticapm: {}
+
+exporters:
+  elasticsearch/otel:
+    endpoints:
+{% for h in groups['elasticsearch'] %}
+      - https://{{ h }}.{{ lab_domain }}:9200
+{% endfor %}
+    user: ${env:ES_USERNAME}
+    password: ${env:ES_PASSWORD}
+    mapping:
+      mode: otel
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, elasticapm]
+      exporters: [elasticapm, elasticsearch/otel]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [elasticsearch/otel]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, elasticapm]
+      exporters: [elasticapm, elasticsearch/otel]
+    metrics/aggregated:
+      receivers: [elasticapm]
+      processors: [batch/aggregated]
+      exporters: [elasticsearch/otel]

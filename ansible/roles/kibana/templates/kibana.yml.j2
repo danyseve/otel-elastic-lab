@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+server.host: "0.0.0.0"
+server.port: 5601
+server.name: {{ inventory_hostname }}
+server.publicBaseUrl: "https://{{ inventory_hostname }}.{{ lab_domain }}:5601"
+
+server.ssl.enabled: true
+server.ssl.certificate: /etc/kibana/certs/node.crt
+server.ssl.key: /etc/kibana/certs/node.key
+
+elasticsearch.hosts:
+{% for h in groups['elasticsearch'] %}
+  - "https://{{ h }}.{{ lab_domain }}:9200"
+{% endfor %}
+elasticsearch.username: kibana_system
+elasticsearch.password: "{{ kibana_system_password }}"
+elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/ca.crt"]
+
+xpack.encryptedSavedObjects.encryptionKey: "{{ kibana_encryption_key }}"
+xpack.security.encryptionKey: "{{ kibana_encryption_key }}"
+xpack.reporting.encryptionKey: "{{ kibana_encryption_key }}"

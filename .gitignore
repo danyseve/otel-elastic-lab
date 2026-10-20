@@ -1,0 +1,23 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl.bak
+crash.log
+
+# Ansible: generated inventory, secrets and PKI must never be committed
+ansible/inventory/hosts.yml
+ansible/group_vars/all/vault.yml
+ansible/.pki/
+*.retry
+
+# Experiment raw output
+experiments/results/*.csv
+experiments/results/*.json
+
+# Misc
+.env
+.vscode/
+.idea/
+.DS_Store

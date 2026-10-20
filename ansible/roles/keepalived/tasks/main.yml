@@ -1,0 +1,28 @@
+- name: Install keepalived
+  ansible.builtin.apt:
+    name: keepalived
+
+- name: Health check script (VIP follows a healthy gateway)
+  ansible.builtin.copy:
+    dest: /etc/keepalived/check_otel_gateway.sh
+    content: |
+      #!/bin/sh
+      exec curl -sf --max-time 2 http://127.0.0.1:13133/ >/dev/null
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: keepalived.conf
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart keepalived
+
+- name: Enable and start keepalived
+  ansible.builtin.systemd_service:
+    name: keepalived
+    enabled: true
+    state: started

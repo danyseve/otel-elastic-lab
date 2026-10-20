@@ -1,0 +1,51 @@
+- name: Download otelcol-contrib {{ otelcol_version }}
+  ansible.builtin.get_url:
+    url: "{{ otelcol_deb_url }}"
+    dest: "/var/cache/apt/archives/otelcol-contrib_{{ otelcol_version }}_amd64.deb"
+    mode: "0644"
+
+- name: Install otelcol-contrib
+  ansible.builtin.apt:
+    deb: "/var/cache/apt/archives/otelcol-contrib_{{ otelcol_version }}_amd64.deb"
+  notify: Restart otelcol-contrib
+
+- name: Let the agent read journald and service logs
+  ansible.builtin.user:
+    name: otelcol-contrib
+    groups: "{{ ['adm', 'systemd-journal'] + (['elasticsearch'] if otel_agent_collect_es else []) }}"
+    append: true
+  notify: Restart otelcol-contrib
+
+- name: Persistent queue directory
+  ansible.builtin.file:
+    path: "{{ otel_agent_storage_dir }}"
+    state: directory
+    owner: otelcol-contrib
+    group: otelcol-contrib
+    mode: "0750"
+
+- name: Agent pipeline
+  ansible.builtin.template:
+    src: agent.yaml.j2
+    dest: /etc/otelcol-contrib/config.yaml
+    owner: root
+    group: otelcol-contrib
+    mode: "0640"
+    validate: /usr/bin/otelcol-contrib validate --config=%s
+  notify: Restart otelcol-contrib
+
+- name: Agent environment (credentials for the Elasticsearch receiver)
+  ansible.builtin.template:
+    src: otelcol-contrib.conf.j2
+    dest: /etc/otelcol-contrib/otelcol-contrib.conf
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart otelcol-contrib
+
+- name: Enable and start the agent
+  ansible.builtin.systemd_service:
+    name: otelcol-contrib
+    enabled: true
+    state: started

@@ -1,0 +1,135 @@
+# {{ ansible_managed }}
+# Agent tier: one per VM. Collects local signals and forwards them over OTLP
+# to the gateway tier, buffering on disk when the gateway is unreachable.
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13134
+  file_storage:
+    directory: {{ otel_agent_storage_dir }}
+
+receivers:
+{% if otel_agent_otlp_enabled %}
+  otlp:
+    protocols:
+      grpc:
+        endpoint: {{ otel_agent_otlp_bind }}:4317
+      http:
+        endpoint: {{ otel_agent_otlp_bind }}:4318
+{% endif %}
+
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      load: {}
+      disk: {}
+      filesystem: {}
+      network: {}
+      paging: {}
+      processes: {}
+      process:
+        mute_process_name_error: true
+        mute_process_exe_error: true
+        mute_process_io_error: true
+        mute_process_user_error: true
+
+  journald:
+    units:
+{% for unit in otel_agent_journald_units %}
+      - {{ unit }}
+{% endfor %}
+    priority: info
+
+  # "Monitor the monitor": internal metrics of the collectors on this VM.
+  prometheus/otelcol:
+    config:
+      scrape_configs:
+        - job_name: otelcol
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:8889"{% if otel_agent_is_gateway_host %}, "127.0.0.1:8888"{% endif %}]
+
+{% if otel_agent_collect_es %}
+  elasticsearch:
+    endpoint: https://localhost:9200
+    username: ${env:ES_USERNAME}
+    password: ${env:ES_PASSWORD}
+    collection_interval: 30s
+    nodes: ["_local"]
+
+  filelog/elasticsearch:
+    include: [/var/log/elasticsearch/*_server.json]
+    start_at: end
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes["@timestamp"]
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.000Z07:00"
+        severity:
+          parse_from: attributes["log.level"]
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+  resource:
+    attributes:
+      - key: deployment.environment.name
+        value: {{ lab_environment }}
+        action: insert
+      - key: service.namespace
+        value: otel-lab
+        action: insert
+  batch: {}
+
+exporters:
+  otlp/gateway:
+    endpoint: {{ otel_agent_exporter_endpoint }}
+    sending_queue:
+      enabled: true
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      # Never drop: the persistent queue holds data until a gateway is back.
+      max_elapsed_time: 0
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8889
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, prometheus/otelcol{% if otel_agent_collect_es %}, elasticsearch{% endif %}{% if otel_agent_otlp_enabled %}, otlp{% endif %}]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/gateway]
+    logs:
+      receivers: [journald{% if otel_agent_collect_es %}, filelog/elasticsearch{% endif %}{% if otel_agent_otlp_enabled %}, otlp{% endif %}]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/gateway]
+{% if otel_agent_otlp_enabled %}
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/gateway]
+{% endif %}

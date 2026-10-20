@@ -1,0 +1,4 @@
+profile: moderate
+exclude_paths:
+  - .pki/
+  - group_vars/all/vault.yml.example

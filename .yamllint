@@ -1,0 +1,15 @@
+extends: default
+ignore: |
+  terraform/.terraform/
+  ansible/.pki/
+rules:
+  line-length: disable
+  document-start: disable
+  truthy:
+    allowed-values: ["true", "false", "yes", "no", "on"]
+  comments:
+    min-spaces-from-content: 1
+  braces:
+    max-spaces-inside: 1
+  indentation:
+    indent-sequences: consistent

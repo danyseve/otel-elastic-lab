@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+[Unit]
+Description=EDOT Collector (OpenTelemetry gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=edot
+Group=edot
+EnvironmentFile=/etc/edot/edot.env
+WorkingDirectory={{ edot_install_dir }}/current
+ExecStart={{ edot_install_dir }}/current/elastic-agent otel --config /etc/edot/gateway.yaml
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

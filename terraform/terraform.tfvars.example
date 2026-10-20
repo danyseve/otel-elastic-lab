@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (git-ignored) and adapt. All values below are examples.
+
+proxmox_endpoint  = "https://pve.example.internal:8006/"
+proxmox_api_token = "terraform@pve!otel-lab=00000000-0000-0000-0000-000000000000"
+proxmox_insecure  = true
+
+network_gateway = "10.0.0.1"
+dns_servers     = ["10.0.0.1"]
+domain          = "lab.example"
+
+ssh_public_key = "ssh-ed25519 AAAA... you@workstation"
+
+# One Elasticsearch VM per hypervisor host.
+vms = {
+  es-01 = { node = "node-1", vm_id = 901, role = "elasticsearch", ip = "10.0.0.11", cores = 4, memory_mb = 8192, disk_gb = 100 }
+  es-02 = { node = "node-2", vm_id = 902, role = "elasticsearch", ip = "10.0.0.12", cores = 4, memory_mb = 8192, disk_gb = 100 }
+  es-03 = { node = "node-3", vm_id = 903, role = "elasticsearch", ip = "10.0.0.13", cores = 4, memory_mb = 8192, disk_gb = 100 }
+  apps-01 = { node = "node-1", vm_id = 910, role = "apps", ip = "10.0.0.20", cores = 2, memory_mb = 4096, disk_gb = 40 }
+}

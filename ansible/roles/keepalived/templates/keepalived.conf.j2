@@ -1,0 +1,42 @@
+# {{ ansible_managed }}
+global_defs {
+    enable_script_security
+    script_user root
+}
+
+vrrp_script chk_otel_gateway {
+    script "/etc/keepalived/check_otel_gateway.sh"
+    interval 3
+    fall 2
+    rise 2
+}
+
+vrrp_instance OTEL_GW {
+    state BACKUP
+    interface {{ ansible_default_ipv4.interface }}
+    virtual_router_id 51
+    # First gateway in the inventory is preferred: 150, 140, 130...
+    priority {{ 150 - (groups['otel_gateway'].index(inventory_hostname) * 10) }}
+    advert_int 1
+
+    # Unicast avoids depending on multicast through virtual bridges/firewalls.
+    unicast_src_ip {{ ansible_host }}
+    unicast_peer {
+{% for h in groups['otel_gateway'] if h != inventory_hostname %}
+        {{ hostvars[h].ansible_host }}
+{% endfor %}
+    }
+
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass }}
+    }
+
+    virtual_ipaddress {
+        {{ otel_gateway_vip }}/{{ otel_gateway_vip_prefix }}
+    }
+
+    track_script {
+        chk_otel_gateway
+    }
+}

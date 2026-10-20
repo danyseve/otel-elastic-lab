@@ -1,0 +1,41 @@
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - qemu-guest-agent
+      - chrony
+      - curl
+      - jq
+      - gnupg
+      - ca-certificates
+      - unzip
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ lab_timezone }}"
+
+- name: Lab hosts in /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} otel-lab"
+    block: |
+      {% for h in groups['all'] %}
+      {{ hostvars[h].ansible_host }} {{ h }}.{{ lab_domain }} {{ h }}
+      {% endfor %}
+      {{ otel_gateway_vip }} {{ otel_gateway_fqdn }} otel-gw
+
+- name: Trust the lab CA system-wide
+  ansible.builtin.copy:
+    src: "{{ pki_dir }}/ca.crt"
+    dest: /usr/local/share/ca-certificates/otel-lab-ca.crt
+    mode: "0644"
+  notify: Update CA certificates
+
+- name: Disable swap (Elasticsearch best practice)
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Apply CA trust before services start
+  ansible.builtin.meta: flush_handlers

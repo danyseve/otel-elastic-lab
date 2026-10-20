@@ -1,0 +1,39 @@
+# {{ ansible_managed }}
+cluster.name: {{ es_cluster_name }}
+node.name: {{ inventory_hostname }}
+node.roles: {{ es_node_roles | to_json }}
+
+path.data: /var/lib/elasticsearch
+path.logs: /var/log/elasticsearch
+
+network.host: ["_local_", "{{ ansible_host }}"]
+network.publish_host: {{ ansible_host }}
+http.port: 9200
+transport.port: 9300
+
+discovery.seed_hosts:
+{% for h in groups['elasticsearch'] %}
+  - "{{ hostvars[h].ansible_host }}:9300"
+{% endfor %}
+
+# Only used the very first time the cluster forms; ignored afterwards.
+cluster.initial_master_nodes:
+{% for h in groups['elasticsearch'] %}
+  - {{ h }}
+{% endfor %}
+
+xpack.security.enabled: true
+xpack.security.enrollment.enabled: false
+
+xpack.security.transport.ssl:
+  enabled: true
+  verification_mode: full
+  certificate: {{ es_certs_dir }}/node.crt
+  key: {{ es_certs_dir }}/node.key
+  certificate_authorities: ["{{ es_certs_dir }}/ca.crt"]
+
+xpack.security.http.ssl:
+  enabled: true
+  certificate: {{ es_certs_dir }}/node.crt
+  key: {{ es_certs_dir }}/node.key
+  certificate_authorities: ["{{ es_certs_dir }}/ca.crt"]
