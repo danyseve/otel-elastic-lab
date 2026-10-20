@@ -1,7 +1,7 @@
 # {{ ansible_managed }}
 # Gateway tier: receives OTLP from agents and SDKs, derives APM metrics and
 # writes OTel-native documents to Elasticsearch.
-# Check with: {{ edot_install_dir }}/current/elastic-agent otel validate --config /etc/edot/gateway.yaml
+# Check with: {{ otel_gateway_install_dir }}/current/elastic-agent otel validate --config /etc/edot/gateway.yaml
 
 extensions:
   health_check:

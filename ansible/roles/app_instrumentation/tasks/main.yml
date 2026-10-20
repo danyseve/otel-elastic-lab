@@ -18,14 +18,14 @@
   loop: "{{ instrumented_services }}"
   loop_control:
     label: "{{ item.unit }}"
-  register: app_otel_dropins
+  register: app_instrumentation_dropins
 
 - name: Restart services whose instrumentation changed
   ansible.builtin.systemd_service:
     name: "{{ item.item.unit }}"
     state: restarted
     daemon_reload: true
-  loop: "{{ app_otel_dropins.results }}"
+  loop: "{{ app_instrumentation_dropins.results }}"
   loop_control:
     label: "{{ item.item.unit }}"
   when: item.changed

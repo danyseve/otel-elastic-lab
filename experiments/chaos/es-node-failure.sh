@@ -4,6 +4,8 @@
 # Usage: es-node-failure.sh <hypervisor-host> <vmid>
 # Env:   ES_URL (a node that is NOT being stopped), ELASTIC_PASSWORD,
 #        CA_CERT (default: ansible/.pki/ca.crt), DOWNTIME (seconds, default 120)
+# Values are expanded locally on purpose before being sent over ssh.
+# shellcheck disable=SC2029
 set -euo pipefail
 
 PVE_HOST="${1:?hypervisor host}"

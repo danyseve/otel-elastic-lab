@@ -1,4 +1,5 @@
-otelcol_deb_url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+otel_agent_release_base: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download
+otel_agent_deb_url: "{{ otel_agent_release_base }}/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
 
 # Accept OTLP from local applications (enabled on the apps VM).
 otel_agent_otlp_enabled: false

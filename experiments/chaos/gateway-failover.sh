@@ -4,6 +4,8 @@
 #
 # Env: VIP_IP, VIP_FQDN (default otel-gw.lab.example), GATEWAYS ("es-01 es-02 es-03"),
 #      SSH_USER (default debian), CA_CERT (default ansible/.pki/ca.crt)
+# Values are expanded locally on purpose before being sent over ssh.
+# shellcheck disable=SC2029
 set -euo pipefail
 
 VIP_IP="${VIP_IP:?set VIP_IP}"

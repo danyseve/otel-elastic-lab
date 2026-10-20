@@ -1,6 +1,6 @@
 - name: Download otelcol-contrib {{ otelcol_version }}
   ansible.builtin.get_url:
-    url: "{{ otelcol_deb_url }}"
+    url: "{{ otel_agent_deb_url }}"
     dest: "/var/cache/apt/archives/otelcol-contrib_{{ otelcol_version }}_amd64.deb"
     mode: "0644"
 

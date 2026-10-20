@@ -20,7 +20,7 @@
 
 - name: Certificates directory
   ansible.builtin.file:
-    path: "{{ es_certs_dir }}"
+    path: "{{ elasticsearch_certs_dir }}"
     state: directory
     owner: root
     group: elasticsearch
@@ -29,7 +29,7 @@
 - name: Copy lab CA and node certificate
   ansible.builtin.copy:
     src: "{{ pki_dir }}/{{ item.src }}"
-    dest: "{{ es_certs_dir }}/{{ item.dest }}"
+    dest: "{{ elasticsearch_certs_dir }}/{{ item.dest }}"
     owner: root
     group: elasticsearch
     mode: "0640"
@@ -42,30 +42,30 @@
   notify: Restart elasticsearch
 
 - name: List keystore entries
-  ansible.builtin.command: "{{ es_keystore_bin }} list"
-  register: es_keystore
+  ansible.builtin.command: "{{ elasticsearch_keystore_bin }} list"
+  register: elasticsearch_keystore
   changed_when: false
 
 - name: Remove auto-configuration secrets
-  ansible.builtin.command: "{{ es_keystore_bin }} remove {{ item }}"
-  loop: "{{ es_autoconfig_secrets }}"
-  when: item in es_keystore.stdout_lines
+  ansible.builtin.command: "{{ elasticsearch_keystore_bin }} remove {{ item }}"
+  loop: "{{ elasticsearch_autoconfig_secrets }}"
+  when: item in elasticsearch_keystore.stdout_lines
   changed_when: true
   notify: Restart elasticsearch
 
 - name: Seed the bootstrap password of the 'elastic' user
   ansible.builtin.shell: |
     set -o pipefail
-    printf '%s' "$ES_BOOTSTRAP_PW" | {{ es_keystore_bin }} add -x -f bootstrap.password
+    printf '%s' "$ES_BOOTSTRAP_PW" | {{ elasticsearch_keystore_bin }} add -x -f bootstrap.password
   args:
     executable: /bin/bash
   environment:
     ES_BOOTSTRAP_PW: "{{ elastic_password }}"
-  when: "'bootstrap.password' not in es_keystore.stdout_lines"
+  when: "'bootstrap.password' not in elasticsearch_keystore.stdout_lines"
   changed_when: true
   no_log: true
 
-- name: elasticsearch.yml
+- name: Configure elasticsearch.yml
   ansible.builtin.template:
     src: elasticsearch.yml.j2
     dest: /etc/elasticsearch/elasticsearch.yml
@@ -99,8 +99,8 @@
     user: elastic
     password: "{{ elastic_password }}"
     force_basic_auth: true
-  register: es_health
-  until: es_health.status == 200
+  register: elasticsearch_health
+  until: elasticsearch_health.status == 200
   retries: 30
   delay: 10
   no_log: true

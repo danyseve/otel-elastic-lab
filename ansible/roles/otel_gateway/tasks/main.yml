@@ -7,26 +7,26 @@
 
 - name: Install directory
   ansible.builtin.file:
-    path: "{{ edot_install_dir }}"
+    path: "{{ otel_gateway_install_dir }}"
     state: directory
     owner: edot
     group: edot
     mode: "0755"
 
-- name: Download and unpack EDOT Collector {{ edot_version }}
+- name: Download and unpack EDOT Collector {{ otel_gateway_version }}
   ansible.builtin.unarchive:
-    src: "{{ edot_url }}"
-    dest: "{{ edot_install_dir }}"
+    src: "{{ otel_gateway_url }}"
+    dest: "{{ otel_gateway_install_dir }}"
     remote_src: true
     owner: edot
     group: edot
-    creates: "{{ edot_install_dir }}/{{ edot_release }}"
+    creates: "{{ otel_gateway_install_dir }}/{{ otel_gateway_release }}"
   notify: Restart edot-gateway
 
 - name: Point 'current' at the installed release
   ansible.builtin.file:
-    src: "{{ edot_install_dir }}/{{ edot_release }}"
-    dest: "{{ edot_install_dir }}/current"
+    src: "{{ otel_gateway_install_dir }}/{{ otel_gateway_release }}"
+    dest: "{{ otel_gateway_install_dir }}/current"
     state: link
     owner: edot
     group: edot
@@ -78,7 +78,7 @@
   no_log: true
   notify: Restart edot-gateway
 
-- name: systemd unit
+- name: Install systemd unit
   ansible.builtin.template:
     src: edot-gateway.service.j2
     dest: /etc/systemd/system/edot-gateway.service
@@ -98,7 +98,7 @@
 - name: Wait for the gateway health check
   ansible.builtin.uri:
     url: http://127.0.0.1:13133/
-  register: edot_health
-  until: edot_health.status == 200
+  register: otel_gateway_health
+  until: otel_gateway_health.status == 200
   retries: 12
   delay: 5
