@@ -7,7 +7,10 @@
 
 **Vendor-neutral, full-stack observability (traces, metrics, logs) built on OpenTelemetry, with a
 highly available 3-node Elasticsearch cluster on KVM virtual machines. Everything is defined as code,
-can be rebuilt from scratch, and has been tested against failures.**
+can be rebuilt from scratch, and ships with scripted failure experiments.**
+
+> 🚧 **Status:** work in progress. The code passes CI (lint/validate) but has not yet been deployed
+> end to end; experiment results will be published in the paper as they are run.
 
 The lab monitors two real applications, **Ascenda** and a **BJJ (Brazilian Jiu-Jitsu) app**, as
 well as the observability platform itself.

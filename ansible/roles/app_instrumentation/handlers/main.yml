@@ -1,0 +1,10 @@
+# Restarts only the units whose drop-in actually changed in this run.
+- name: Restart instrumented services
+  ansible.builtin.systemd_service:
+    name: "{{ item.item.unit }}"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ app_instrumentation_dropins.results }}"
+  loop_control:
+    label: "{{ item.item.unit }}"
+  when: item.changed
