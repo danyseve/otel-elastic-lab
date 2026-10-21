@@ -24,3 +24,6 @@ experiments/results/*.json
 .vscode/
 .idea/
 .DS_Store
+
+# ansible-lint/ansible-galaxy cache created by local runs
+ansible/.ansible/

@@ -1,12 +1,25 @@
 # Copy to terraform.tfvars (git-ignored) and adapt. All values below are examples.
+# API only: no SSH to the hypervisors and no snippets datastore are needed.
+# The token should carry the minimum role over a pool (see docs/adr/0006).
 
 proxmox_endpoint  = "https://pve.example.internal:8006/"
 proxmox_api_token = "terraform@pve!otel-lab=00000000-0000-0000-0000-000000000000"
 proxmox_insecure  = true
 
+pool_id = "otel-lab"
+
 network_gateway = "10.0.0.1"
 dns_servers     = ["10.0.0.1"]
 domain          = "lab.example"
+# Tag for the lab VLAN. Requires a VLAN-aware bridge; null = untagged.
+network_vlan = 10
+
+# Datastore that holds the imported cloud image. It must be readable from every
+# hypervisor that hosts a VM: with node-local storage (default "local") all three
+# VMs must live on image_node, so point it at shared storage in that case.
+image_datastore = "local"
+# Hypervisor that imports the image. Empty = node of the first VM by name.
+# image_node = "node-1"
 
 ssh_public_key = "ssh-ed25519 AAAA... you@workstation"
 

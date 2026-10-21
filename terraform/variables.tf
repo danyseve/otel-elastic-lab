@@ -15,12 +15,6 @@ variable "proxmox_insecure" {
   default     = false
 }
 
-variable "proxmox_ssh_user" {
-  description = "SSH user on the hypervisor hosts (used to upload snippets)"
-  type        = string
-  default     = "root"
-}
-
 variable "debian_image_url" {
   description = "Debian 13 generic cloud image"
   type        = string
@@ -28,15 +22,15 @@ variable "debian_image_url" {
 }
 
 variable "image_datastore" {
-  description = "Datastore where the cloud image is downloaded"
+  description = "Datastore that holds the imported cloud image (must be readable from every hypervisor that hosts a VM)"
   type        = string
   default     = "local"
 }
 
-variable "snippets_datastore" {
-  description = "Datastore with the 'snippets' content type enabled"
+variable "image_node" {
+  description = "Hypervisor that imports the cloud image. Empty = the node of the first VM in alphabetical order."
   type        = string
-  default     = "local"
+  default     = ""
 }
 
 variable "vm_datastore" {
@@ -45,9 +39,21 @@ variable "vm_datastore" {
   default     = "local-lvm"
 }
 
+variable "pool_id" {
+  description = "Resource pool the VMs are created in (keeps the API token scoped)"
+  type        = string
+  default     = "otel-lab"
+}
+
 variable "network_bridge" {
   type    = string
   default = "vmbr0"
+}
+
+variable "network_vlan" {
+  description = "VLAN tag for the lab network. Null = untagged (the bridge must be VLAN-aware for a tag)"
+  type        = number
+  default     = null
 }
 
 variable "network_prefix" {
@@ -68,11 +74,6 @@ variable "domain" {
   description = "DNS domain of the lab"
   type        = string
   default     = "lab.example"
-}
-
-variable "timezone" {
-  type    = string
-  default = "Europe/Madrid"
 }
 
 variable "ssh_user" {
