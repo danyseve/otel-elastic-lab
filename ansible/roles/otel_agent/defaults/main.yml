@@ -1,5 +1,8 @@
 otel_agent_release_base: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download
-otel_agent_deb_url: "{{ otel_agent_release_base }}/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+# amd64 on the lab VMs, arm64 on ARM hosts (e.g. Ampere A1 cloud instances).
+otel_agent_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
+otel_agent_deb: "otelcol-contrib_{{ otelcol_version }}_linux_{{ otel_agent_arch }}.deb"
+otel_agent_deb_url: "{{ otel_agent_release_base }}/v{{ otelcol_version }}/{{ otel_agent_deb }}"
 
 # Applications on this host send OTLP here (no TLS, loopback only).
 otel_agent_otlp_bind: 127.0.0.1
