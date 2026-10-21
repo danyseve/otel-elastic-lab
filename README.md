@@ -80,9 +80,27 @@ etcd quorum and the Elasticsearch quorum (2 of 3).
 
 ### Prerequisites
 
-- Three hypervisor hosts (reference: Proxmox VE with an API token and `snippets` enabled on a storage)
+- Three hypervisor hosts (reference: Proxmox VE 8+ with an API token scoped to a resource pool; no SSH
+  and no `snippets` datastore needed — see [ADR-0006](docs/adr/0006-terraform-api-only.md))
 - Terraform ≥ 1.6, Ansible ≥ 2.16, Helm ≥ 3.14, Helmfile ≥ 0.165, kubectl
 - About 16 GB RAM and 6 vCPU free on each host
+
+The token only needs a dedicated user, a pool and a custom role. Minimum reference setup (adjust the
+pool, the storages and the SDN path to your node names):
+
+```bash
+pvesh create /pools --poolid otel-lab
+pveum role add TerraformOtel --privs "VM.Allocate,VM.Audit,VM.Config.CPU,VM.Config.Memory,VM.Config.Disk,VM.Config.Network,VM.Config.Options,VM.Config.Cloudinit,VM.Config.HWType,VM.PowerMgmt,Datastore.AllocateSpace,Datastore.AllocateTemplate,Datastore.Audit,Sys.Audit,SDN.Audit,SDN.Use,Pool.Audit"
+pveum user add terraform@pve
+pveum user token add terraform@pve otel-lab --privsep 1 --expire 2026-12-31
+for p in /pool/otel-lab /storage/local-lvm /storage/local /nodes /sdn/zones; do
+  pveum acl modify "$p" --users terraform@pve --roles TerraformOtel
+  pveum acl modify "$p" --tokens 'terraform@pve!otel-lab' --roles TerraformOtel
+done
+```
+
+`--privsep 1` means the token permission is the intersection of user and token, so both need the ACLs.
+`SDN.Audit` and `SDN.Use` are what make `bridge = "vmbr0"` work even on a host without SDN configured.
 
 ```bash
 # 1. VMs (writes ansible/inventory/k3s.yml)
