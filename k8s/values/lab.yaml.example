@@ -14,6 +14,6 @@ elastic:
   esCount: 3
   esMemory: 8Gi # heap is auto-sized to 50% of this
   esCpu: "2"
-  esStorage: 120Gi # PVC por nodo; local-path no impone cuota (ver watermarks del chart)
+  esStorage: 120Gi # Per-node PVC; local-path enforces no quota (see chart watermarks)
   storageClass: local-path
   kibanaMemory: 2Gi
