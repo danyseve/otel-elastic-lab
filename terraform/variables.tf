@@ -82,8 +82,14 @@ variable "ssh_user" {
   default     = "debian"
 }
 
-variable "ssh_public_key" {
-  type = string
+variable "ssh_public_keys" {
+  description = "SSH public keys installed for the admin user (one entry per key)"
+  type        = list(string)
+
+  validation {
+    condition     = length(var.ssh_public_keys) > 0
+    error_message = "ssh_public_keys must contain at least one public key."
+  }
 }
 
 variable "vms" {

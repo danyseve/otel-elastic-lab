@@ -107,7 +107,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     # SSH connection to the hypervisor.
     user_account {
       username = var.ssh_user
-      keys     = [trimspace(var.ssh_public_key)]
+      keys     = [for k in var.ssh_public_keys : trimspace(k)]
     }
   }
 }

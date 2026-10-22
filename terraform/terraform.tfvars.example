@@ -21,7 +21,9 @@ image_datastore = "local"
 # Hypervisor that imports the image. Empty = node of the first VM by name.
 # image_node = "node-1"
 
-ssh_public_key = "ssh-ed25519 AAAA... you@workstation"
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... you@workstation",
+]
 
 # Three k3s nodes, one per hypervisor host.
 vms = {
