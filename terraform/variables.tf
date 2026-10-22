@@ -22,7 +22,7 @@ variable "debian_image_url" {
 }
 
 variable "image_datastore" {
-  description = "Datastore that holds the imported cloud image (must be readable from every hypervisor that hosts a VM)"
+  description = "Shared datastore for the cloud image. Must allow the `import` content type and be readable from every hypervisor that hosts a VM."
   type        = string
   default     = "local"
 }
