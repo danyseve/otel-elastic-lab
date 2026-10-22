@@ -23,6 +23,14 @@ That design had three costs:
 Drop SSH and snippets entirely and use only the Proxmox API:
 
 - **No provider `ssh {}` block.** The provider runs with an API token alone.
+- **Image import through the API.** The VM disk uses `disk.import_from`, which maps to the Proxmox
+  `import-from` parameter of `POST /nodes/<node>/qemu`: the hypervisor copies the image server-side and
+  no `ssh {}` block is involved. The earlier `disk.file_id` attribute is a *custom disk*: it runs
+  `qm importdisk` **over SSH to the hypervisor** and therefore broke this ADR — it failed with
+  `unable to authenticate user "" over SSH` as soon as the provider was left without SSH access.
+  `import-from` only accepts source volumes of content type `images` or `import`, so the downloaded
+  image is stored as `import` (uncompressed `.qcow2`); an `iso` volume is rejected with
+  `has wrong type 'iso' - needs to be 'images' or 'import'`.
 - **Cloud-init from the provider.** `initialization.user_account` (user + public key), `ip_config` and
   `dns` generate the cloud-init drive through the API. No template file, no snippet.
 - **`agent.enabled` follows `agent_enabled` (default `false`).** The guest agent is installed by
