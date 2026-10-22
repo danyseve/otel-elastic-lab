@@ -1,4 +1,9 @@
 collections:
+  # Pinneadas a la major que funciona hoy: una actualización mayor no puede
+  # volver a romper el despliegue sin que lo veamos en el CI.
   - name: ansible.posix
+    version: ">=2.0.0,<3.0.0"
   - name: community.general
+    version: ">=13.0.0,<14.0.0"
   - name: community.crypto
+    version: ">=3.0.0,<4.0.0"
