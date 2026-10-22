@@ -123,6 +123,10 @@ cp ansible/inventory.example/apps.yml ansible/inventory/apps.yml   # edit
 make agents
 ```
 
+`agent_enabled` stays `false` on the first apply: the guest agent is installed by Ansible, so the VM
+config cannot use it yet. After step 2 (`make cluster`), set `agent_enabled = true` in
+`terraform/terraform.tfvars` and run `make infra` again; reboot the guests one at a time to pick it up.
+
 Kibana: `https://kibana.<your-domain>:5601`, user `elastic`, password from `make elastic-password`.
 
 ## Repository layout
