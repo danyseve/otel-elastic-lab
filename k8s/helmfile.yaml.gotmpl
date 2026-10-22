@@ -28,6 +28,10 @@ releases:
     namespace: cert-manager
     chart: jetstack/cert-manager
     version: v1.18.2
+    # Wait for the webhook to answer before any other release creates a Certificate:
+    # startupapicheck is a Job, so --wait alone is not enough.
+    wait: true
+    waitForJobs: true
     values:
       - crds:
           enabled: true
@@ -37,17 +41,28 @@ releases:
     namespace: metallb-system
     chart: metallb/metallb
     version: 0.15.2
+    # The validating webhook must be serving before IPAddressPool/L2Advertisement exist.
+    wait: true
 
   # Elastic Cloud on Kubernetes - Basic (free) license by default.
   - name: eck-operator
     namespace: elastic-system
     chart: elastic/eck-operator
     version: 3.1.0
+    # Wait for the operator before the Elasticsearch/Kibana CRs are created.
+    wait: true
 
   # Our chart: CA, IP pool, Elasticsearch, Kibana, collector credentials.
   - name: lab-platform
     namespace: observability
     chart: ./charts/lab-platform
+    # Cold start: this release creates Certificate, ClusterIssuer, Elasticsearch, Kibana,
+    # IPAddressPool and L2Advertisement objects, but their CRDs come from the three
+    # releases below. helmfile diffs every release before applying any of them, so the
+    # API rejects those kinds ("no matches for kind ... ensure CRDs are installed first").
+    # Skipping validation on install lets the diff through on an empty cluster.
+    disableValidationOnInstall: true
+    wait: true
     needs:
       - cert-manager/cert-manager
       - metallb-system/metallb
@@ -60,7 +75,12 @@ releases:
     namespace: observability
     chart: open-telemetry/opentelemetry-kube-stack
     version: 0.11.1
+    # Same cold start problem: the chart ships OpenTelemetryCollector/Instrumentation CRs
+    # and a Certificate for the operator webhook.
+    disableValidationOnInstall: true
+    wait: true
     needs:
+      - cert-manager/cert-manager
       - observability/lab-platform
     values:
       - values/otel-kube-stack.yaml.gotmpl
