@@ -48,10 +48,10 @@ resource "proxmox_virtual_environment_vm" "this" {
   scsi_hardware = "virtio-scsi-single"
 
   # The guest agent is installed by Ansible (role 'common') on first boot, so it
-  # is disabled here: enabling it before installation breaks backups and shows
-  # warnings on every clone.
+  # stays disabled unless agent_enabled is set: enabling it before installation
+  # breaks backups and shows warnings on every clone.
   agent {
-    enabled = false
+    enabled = var.agent_enabled
   }
 
   # 'host' exposes AVX/SIMD to the guest; Elasticsearch uses it.

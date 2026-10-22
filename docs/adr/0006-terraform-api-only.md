@@ -25,8 +25,10 @@ Drop SSH and snippets entirely and use only the Proxmox API:
 - **No provider `ssh {}` block.** The provider runs with an API token alone.
 - **Cloud-init from the provider.** `initialization.user_account` (user + public key), `ip_config` and
   `dns` generate the cloud-init drive through the API. No template file, no snippet.
-- **`agent.enabled = false`.** The guest agent is installed by Ansible (role `common`) on first boot;
-  enabling it earlier breaks backups and logs warnings on every clone.
+- **`agent.enabled` follows `agent_enabled` (default `false`).** The guest agent is installed by
+  Ansible (role `common`) on first boot; enabling it earlier breaks backups and logs warnings on
+  every clone. Once Ansible has installed it, set `agent_enabled = true` and apply again to turn it
+  on in the VM config.
 - **Least-privilege token.** A dedicated `terraform@pve` user with a token (`privsep = 1`) holding a
   custom role scoped to a resource pool: `VM.Allocate`, `VM.Audit`, `VM.Config.*`, `VM.PowerMgmt`,
   `Datastore.AllocateSpace`, `Datastore.AllocateTemplate`, `Datastore.Audit`, `Sys.Audit`, `Pool.Audit`.

@@ -92,6 +92,12 @@ variable "ssh_public_keys" {
   }
 }
 
+variable "agent_enabled" {
+  description = "Enable the QEMU guest agent in the VM config. Keep it false on the first apply: the guest does not have qemu-guest-agent yet (Ansible installs it). See docs/adr/0006."
+  type        = bool
+  default     = false
+}
+
 variable "vms" {
   description = "Kubernetes (k3s) nodes. Put each one on a different hypervisor host."
   type = map(object({

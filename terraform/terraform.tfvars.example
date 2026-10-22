@@ -14,6 +14,11 @@ domain          = "lab.example"
 # Tag for the lab VLAN. Requires a VLAN-aware bridge; null = untagged.
 network_vlan = 10
 
+# QEMU guest agent in the VM config. Leave it false for the first apply: the guest
+# does not have qemu-guest-agent yet (Ansible installs it, role 'common'). Once it
+# is installed, set this to true and apply again.
+agent_enabled = false
+
 # Datastore that holds the imported cloud image. It must be readable from every
 # hypervisor that hosts a VM: with node-local storage (default "local") all three
 # VMs must live on image_node, so point it at shared storage in that case.
