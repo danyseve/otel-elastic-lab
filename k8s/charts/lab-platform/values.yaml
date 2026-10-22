@@ -13,7 +13,7 @@ elastic:
   esCount: 3
   esMemory: 8Gi
   esCpu: "2"
-  esStorage: 80Gi
+  esStorage: 120Gi # PVC de datos por nodo (3 PVs, uno por VM sobre discos de 150G)
   storageClass: local-path
   kibanaMemory: 2Gi
 
