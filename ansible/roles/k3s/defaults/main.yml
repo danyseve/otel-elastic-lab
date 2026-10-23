@@ -11,3 +11,8 @@ k3s_sysctls:
   # The collector DaemonSet tails every container log.
   - { name: fs.inotify.max_user_instances, value: "1024" }
   - { name: fs.inotify.max_user_watches, value: "1048576" }
+
+# Extra flags for the embedded etcd, rendered as `etcd-arg` entries in
+# /etc/rancher/k3s/config.yaml. Empty by default: the role keeps etcd's
+# upstream defaults unless the inventory overrides this variable.
+k3s_etcd_args: []

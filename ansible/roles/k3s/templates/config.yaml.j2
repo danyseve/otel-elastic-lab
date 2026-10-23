@@ -14,3 +14,10 @@ disable:
   - servicelb
   - traefik
 write-kubeconfig-mode: "0600"
+{% if k3s_etcd_args | length > 0 %}
+# Populated from k3s_etcd_args (k3s passes each entry to etcd as --etcd-arg).
+etcd-arg:
+{% for arg in k3s_etcd_args %}
+  - "{{ arg }}"
+{% endfor %}
+{% endif %}
